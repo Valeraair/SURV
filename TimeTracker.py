@@ -200,6 +200,9 @@ class TimeTracker:
 
         # Запускаем новую задачу
         self.running_task = {'id': task_id, 'start_time': datetime.now()}
+        self.paused = False
+        self.pause_btn.config(state=tk.NORMAL)
+        self.resume_btn.config(state=tk.DISABLED)
         self.paused_task_id = None  # Сбрасываем задачу на паузе
         self.update_tasks()
         self.update_total_time()
@@ -221,14 +224,15 @@ class TimeTracker:
             try:
                 task_id = self.tasks_list.item(selected[0])['values'][0]
 
-                # Проверяем, не удаляем ли мы задачу, которая была на паузе
+                # Если удаляем задачу, которая была выбрана для продолжения
                 if hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
                     self.paused_task_id = None
-                    # Если других задач нет - деактивируем кнопку "Продолжить"
-                    self.c.execute("SELECT COUNT(*) FROM tasks WHERE date=?",
-                                   (datetime.now().strftime("%d.%m.%Y"),))
-                    if self.c.fetchone()[0] == 0:
-                        self.resume_btn.config(state=tk.DISABLED)
+                    # Пытаемся найти другую задачу для продолжения
+                    self.c.execute("SELECT id FROM tasks WHERE date=? AND id!=? LIMIT 1",
+                                   (datetime.now().strftime("%d.%m.%Y"), task_id))
+                    result = self.c.fetchone()
+                    if result:
+                        self.paused_task_id = result[0]
 
                 # Получаем время задачи перед удалением
                 self.c.execute("SELECT time FROM tasks WHERE id=?", (task_id,))
@@ -248,7 +252,7 @@ class TimeTracker:
                 messagebox.showerror("Ошибка удаления", str(e))
 
     def update_tasks(self):
-        # Обновление списка задач после удаления
+        # Обновление списка задач
         for item in self.tasks_list.get_children():
             self.tasks_list.delete(item)
 
@@ -257,13 +261,15 @@ class TimeTracker:
                            (datetime.now().strftime("%d.%m.%Y"),))
             tasks = self.c.fetchall()
 
-            if not tasks and hasattr(self, 'paused_task_id'):
-                self.paused_task_id = None
-                self.resume_btn.config(state=tk.DISABLED)
-
             for row in tasks:
                 task_id, regress, name, time = row
-                status = '▶ Активна' if self.running_task and self.running_task['id'] == task_id else '⏸ Ожидание'
+                if self.running_task and self.running_task['id'] == task_id:
+                    status = '▶ Активна'
+                elif self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
+                    status = '⏸ Выбрана'
+                else:
+                    status = '⏸ Ожидание'
+
                 self.tasks_list.insert('', tk.END, values=(
                     task_id,
                     regress,
@@ -271,6 +277,14 @@ class TimeTracker:
                     status,
                     self.format_time(time)
                 ))
+
+            # Обновляем состояние кнопки "Продолжить"
+            if not tasks:
+                self.paused_task_id = None
+                self.resume_btn.config(state=tk.DISABLED)
+            elif self.paused:
+                self.resume_btn.config(state=tk.NORMAL)
+
         except Exception as e:
             messagebox.showerror("Ошибка обновления", str(e))
 
@@ -280,29 +294,15 @@ class TimeTracker:
         if not selected:
             return
 
-        new_task_id = self.tasks_list.item(selected[0])['values'][0]
+        task_id = self.tasks_list.item(selected[0])['values'][0]
 
         if self.paused:
-            # Во время паузы просто запоминаем выбранную задачу для продолжения
-            self.paused_task_id = new_task_id
-            # Обновляем отображение, но не запускаем таймер
+            # Во время паузы просто запоминаем выбранную задачу
+            self.paused_task_id = task_id
             self.update_tasks()
         else:
-            # Если не на паузе - обычное переключение задач
-            if self.running_task:
-                elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
-                self.update_task_time(self.running_task['id'], int(elapsed))
-                self.total_time += int(elapsed)
-                self.update_total_time()
-
-            # Запускаем новую задачу
-            self.running_task = {'id': new_task_id, 'start_time': datetime.now()}
-            self.update_tasks()
-
-    def update_task_time(self, task_id, seconds):
-        # Обновление времени задачи в БД
-        self.c.execute("UPDATE tasks SET time = time + ? WHERE id=?", (seconds, task_id))
-        self.conn.commit()
+            # Если не на паузе - сразу запускаем задачу
+            self.start_task_timer(task_id)
 
     def format_time(self, seconds):
         # Форматирование времени
@@ -342,9 +342,10 @@ class TimeTracker:
             elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
             self.update_task_time(self.running_task['id'], int(elapsed))
             self.total_time += int(elapsed)
-            # Сохраняем ID текущей задачи перед паузой
+            # Сохраняем текущую задачу как выбранную для продолжения
             self.paused_task_id = self.running_task['id']
             self.running_task = None
+
         self.paused = True
         self.pause_btn.config(state=tk.DISABLED)
         self.resume_btn.config(state=tk.NORMAL)
@@ -353,24 +354,32 @@ class TimeTracker:
 
     def resume_all(self):
         """Возобновление работы с выбранной задачей"""
-        if not hasattr(self, 'paused_task_id') or not self.paused_task_id:
+        # Проверяем, есть ли выбранная задача в списке
+        selected = self.tasks_list.selection()
+        task_id = None
+
+        if selected:
+            task_id = self.tasks_list.item(selected[0])['values'][0]
+        elif hasattr(self, 'paused_task_id') and self.paused_task_id:
+            task_id = self.paused_task_id
+
+        if not task_id:
             messagebox.showwarning("Ошибка", "Не выбрана задача для продолжения")
             return
 
-        # Проверяем, что задача существует
-        self.c.execute("SELECT 1 FROM tasks WHERE id=?", (self.paused_task_id,))
+        # Проверяем существование задачи
+        self.c.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,))
         if not self.c.fetchone():
             messagebox.showwarning("Ошибка", "Выбранная задача больше не существует")
             self.paused_task_id = None
             self.resume_btn.config(state=tk.DISABLED)
             return
 
-        # Запускаем выбранную задачу
-        self.start_task_timer(self.paused_task_id)
+        # Запускаем задачу
+        self.start_task_timer(task_id)
         self.paused = False
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
-        self.update_tasks()
 
     def update_total_time(self):
         # Обновление общего времени
@@ -436,6 +445,16 @@ class TimeTracker:
         self.tray_icon.stop()
         self.root.destroy()
         sys.exit(0)
+
+    def update_task_time(self, task_id, seconds):
+        # Обновление времени задачи в БД
+        self.c.execute("UPDATE tasks SET time = time + ? WHERE id=?", (seconds, task_id))
+        self.conn.commit()
+
+    def task_exists(self, task_id):
+        """Проверяет, существует ли задача с указанным ID"""
+        self.c.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,))
+        return bool(self.c.fetchone())
 
 
 if __name__ == "__main__":
