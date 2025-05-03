@@ -7,23 +7,8 @@ import pystray
 from PIL import Image
 import sys
 
+
 class TimeTracker:
-    # Константы
-    DB_NAME = 'timetracker.db'
-    DATE_FORMAT = "%d.%m.%Y"
-    EXCEL_DATE_FORMAT = "%Y%m%d_%H%M%S"
-    EXCEL_HEADERS = ['Дата', 'Логин', 'Время', 'Регресс', 'Комментарий', 'Название рана', 'Ссылка']
-
-    # Улучшенный метод работы с БД
-    def db_execute(self, query, params=()):
-        """Безопасное выполнение запроса к БД"""
-        try:
-            with self.conn:
-                return self.c.execute(query, params)
-        except sqlite3.Error as e:
-            messagebox.showerror("Ошибка БД", f"Database error: {str(e)}")
-            raise
-
     def __init__(self, root):
         self.root = root
         self.root.title("Work Time Tracker")
@@ -37,8 +22,6 @@ class TimeTracker:
         self.root.after(1000, self.update_time)
         self.update_tasks()
         self.update_total_time()
-        self._is_exiting = False  # Флаг для отслеживания выхода
-        self.paused_task = None  # Заменяем paused_task_id на полный объект задачи
 
     def add_placeholder(self, entry, text):
         entry.insert(0, text)
@@ -57,32 +40,18 @@ class TimeTracker:
             entry.config(foreground='grey')
 
     def setup_db(self):
-        """Инициализация базы данных"""
-        try:
-            self.conn = sqlite3.connect(self.DB_NAME)
-            self.c = self.conn.cursor()
-            self.db_execute('''CREATE TABLE IF NOT EXISTS tasks
-                               (
-                                   id
-                                   INTEGER
-                                   PRIMARY
-                                   KEY,
-                                   date
-                                   TEXT,
-                                   login
-                                   TEXT,
-                                   regress
-                                   TEXT,
-                                   name
-                                   TEXT,
-                                   link
-                                   TEXT,
-                                   time
-                                   INTEGER
-                               )''')
-        except sqlite3.Error as e:
-            messagebox.showerror("Ошибка БД", f"Не удалось инициализировать БД: {str(e)}")
-            sys.exit(1)
+        # Инициализация БД
+        self.conn = sqlite3.connect('timetracker.db')
+        self.c = self.conn.cursor()
+        self.c.execute('''CREATE TABLE IF NOT EXISTS tasks
+                         (id INTEGER PRIMARY KEY,
+                          date TEXT,
+                          login TEXT,
+                          regress TEXT,
+                          name TEXT,
+                          link TEXT,
+                          time INTEGER)''')
+        self.conn.commit()
 
     def setup_ui(self):
         # Инициализация UI
@@ -157,10 +126,6 @@ class TimeTracker:
         finish_btn = ttk.Button(control_frame, text="Завершить день", command=self.finish_day)
         finish_btn.pack(side=tk.LEFT, padx=10)
 
-        # В панель управления (после finish_btn)
-        close_btn = ttk.Button(control_frame, text="Закрыть", command=self.confirm_and_exit)
-        close_btn.pack(side=tk.LEFT, padx=10)
-
         # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
 
@@ -174,23 +139,44 @@ class TimeTracker:
         self.tray_icon = pystray.Icon("time_tracker", image, "Time Tracker", menu)
 
     def add_task(self):
-        # Добавление новой задачи в БД
-        if not all([self.regress_entry.get(), self.name_entry.get(), self.link_entry.get()]):
-            messagebox.showerror("Ошибка", "Заполните все поля задачи")
+        # Проверка заполнения обязательных полей
+        login = self.login_entry.get().strip()
+        regress = self.regress_entry.get().strip()
+        name = self.name_entry.get().strip()
+        link = self.link_entry.get().strip()
+
+        if not login or login == "Введите ваш логин":
+            messagebox.showerror("Ошибка", "Введите ваш логин")
+            self.login_entry.focus_set()
+            return
+
+        if not regress or regress == "Название поверхности":
+            messagebox.showerror("Ошибка", "Введите название поверхности")
+            self.regress_entry.focus_set()
+            return
+
+        if not name or name == "Название тест-рана":
+            messagebox.showerror("Ошибка", "Введите название тест-рана")
+            self.name_entry.focus_set()
+            return
+
+        if not link or link == "Ссылка на тест-ран":
+            messagebox.showerror("Ошибка", "Введите ссылку на тест-ран")
+            self.link_entry.focus_set()
             return
 
         data = (
             datetime.now().strftime("%d.%m.%Y"),
-            self.login_entry.get(),
-            self.regress_entry.get(),
-            self.name_entry.get(),
-            self.link_entry.get(),
+            login,
+            regress,
+            name,
+            link,
             0
         )
 
         try:
             self.c.execute("INSERT INTO tasks (date, login, regress, name, link, time) VALUES (?,?,?,?,?,?)", data)
-            new_id = self.c.lastrowid  # Получаем ID новой задачи
+            new_id = self.c.lastrowid
 
             if self.extra_time.get():
                 self.c.execute("INSERT INTO tasks (date, login, regress, name, link, time) VALUES (?,?,?,?,?,?)",
@@ -199,12 +185,10 @@ class TimeTracker:
             self.conn.commit()
             self.update_tasks()
             self.clear_task_fields()
-
-            # Принудительно запускаем таймер для новой задачи
             self.start_task_timer(new_id)
 
         except Exception as e:
-            messagebox.showerror("Ошибка БД", str(e))
+            messagebox.showerror("Ошибка БД", f"Не удалось добавить задачу: {str(e)}")
 
     def start_task_timer(self, task_id):
         """Явный запуск таймера для задачи"""
@@ -216,20 +200,9 @@ class TimeTracker:
 
         # Запускаем новую задачу
         self.running_task = {'id': task_id, 'start_time': datetime.now()}
+        self.paused_task_id = None  # Сбрасываем задачу на паузе
         self.update_tasks()
         self.update_total_time()
-
-    def on_task_select(self, event):
-        """Обработчик выбора задачи в списке"""
-        if self.paused:
-            return
-
-        selected = self.tasks_list.selection()
-        if not selected:
-            return
-
-        task_id = self.tasks_list.item(selected[0])['values'][0]
-        self.start_task_timer(task_id)
 
     def clear_task_fields(self):
         # Очистка полей ввода задачи
@@ -239,30 +212,37 @@ class TimeTracker:
         self.extra_time.set(False)
 
     def delete_task(self):
-        """Удаление выбранной задачи"""
+        # Удаление выбранной задачи
         selected = self.tasks_list.selection()
         if not selected:
             return
 
-        task_id = self.tasks_list.item(selected[0])['values'][0]
-
         if messagebox.askyesno("Подтверждение", "Удалить выбранную задачу?"):
             try:
-                # Если удаляем задачу на паузе - сбрасываем paused_task
-                if self.paused_task and self.paused_task['id'] == task_id:
-                    self.paused_task = None
-                    self.resume_btn.config(state=tk.DISABLED)
+                task_id = self.tasks_list.item(selected[0])['values'][0]
 
-                # Остальная логика удаления...
+                # Проверяем, не удаляем ли мы задачу, которая была на паузе
+                if hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
+                    self.paused_task_id = None
+                    # Если других задач нет - деактивируем кнопку "Продолжить"
+                    self.c.execute("SELECT COUNT(*) FROM tasks WHERE date=?",
+                                   (datetime.now().strftime("%d.%m.%Y"),))
+                    if self.c.fetchone()[0] == 0:
+                        self.resume_btn.config(state=tk.DISABLED)
+
+                # Получаем время задачи перед удалением
                 self.c.execute("SELECT time FROM tasks WHERE id=?", (task_id,))
                 task_time = self.c.fetchone()[0]
 
+                # Удаляем задачу
                 self.c.execute("DELETE FROM tasks WHERE id=?", (task_id,))
                 self.conn.commit()
 
+                # Обновляем общее время
                 self.total_time -= task_time
-                self.update_tasks()
                 self.update_total_time()
+
+                self.update_tasks()
 
             except Exception as e:
                 messagebox.showerror("Ошибка удаления", str(e))
@@ -275,7 +255,13 @@ class TimeTracker:
         try:
             self.c.execute("SELECT id, regress, name, time FROM tasks WHERE date=?",
                            (datetime.now().strftime("%d.%m.%Y"),))
-            for row in self.c.fetchall():
+            tasks = self.c.fetchall()
+
+            if not tasks and hasattr(self, 'paused_task_id'):
+                self.paused_task_id = None
+                self.resume_btn.config(state=tk.DISABLED)
+
+            for row in tasks:
                 task_id, regress, name, time = row
                 status = '▶ Активна' if self.running_task and self.running_task['id'] == task_id else '⏸ Ожидание'
                 self.tasks_list.insert('', tk.END, values=(
@@ -289,26 +275,29 @@ class TimeTracker:
             messagebox.showerror("Ошибка обновления", str(e))
 
     def on_task_select(self, event):
-        # Обработчик выбора задачи
-        if self.paused:
-            return
-
+        """Обработчик выбора задачи в списке"""
         selected = self.tasks_list.selection()
         if not selected:
             return
 
         new_task_id = self.tasks_list.item(selected[0])['values'][0]
 
-        # Если уже есть активная задача - сохраняем ее время
-        if self.running_task:
-            elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
-            self.update_task_time(self.running_task['id'], int(elapsed))
-            self.total_time += int(elapsed)
-            self.update_total_time()
+        if self.paused:
+            # Во время паузы просто запоминаем выбранную задачу для продолжения
+            self.paused_task_id = new_task_id
+            # Обновляем отображение, но не запускаем таймер
+            self.update_tasks()
+        else:
+            # Если не на паузе - обычное переключение задач
+            if self.running_task:
+                elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
+                self.update_task_time(self.running_task['id'], int(elapsed))
+                self.total_time += int(elapsed)
+                self.update_total_time()
 
-        # Запускаем новую задачу
-        self.running_task = {'id': new_task_id, 'start_time': datetime.now()}
-        self.update_tasks()
+            # Запускаем новую задачу
+            self.running_task = {'id': new_task_id, 'start_time': datetime.now()}
+            self.update_tasks()
 
     def update_task_time(self, task_id, seconds):
         # Обновление времени задачи в БД
@@ -320,29 +309,24 @@ class TimeTracker:
         return f"{seconds // 3600:02}:{(seconds % 3600) // 60:02}:{seconds % 60:02}"
 
     def update_time(self):
-        """Обновление отображения времени"""
-        if not self.running_task or self.paused:
-            self.root.after(1000, self.update_time)
-            return
+        if self.running_task and not self.paused:
+            elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
+            current_total = self.total_time + elapsed
+            self.total_time_label.config(text=f"Общее время: {self.format_time(current_total)}")
 
-        elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
-        current_total = self.total_time + elapsed
-        self.total_time_label.config(text=f"Общее время: {self.format_time(current_total)}")
-
-        # Обновляем только активную задачу
-        task_id = self.running_task['id']
-        for item in self.tasks_list.get_children():
-            values = self.tasks_list.item(item)['values']
-            if values[0] == task_id:
-                total_task_time = self.get_task_time(task_id) + elapsed
-                self.tasks_list.item(item, values=(
-                    values[0],
-                    values[1],
-                    values[2],
-                    '▶ Активна',
-                    self.format_time(total_task_time)
-                ))
-                break
+            # Обновляем отображение времени для текущей задачи
+            for item in self.tasks_list.get_children():
+                values = self.tasks_list.item(item)['values']
+                if values[0] == self.running_task['id']:
+                    total_task_time = self.get_task_time(self.running_task['id']) + elapsed
+                    self.tasks_list.item(item, values=(
+                        values[0],
+                        values[1],
+                        values[2],
+                        '▶ Активна',
+                        self.format_time(total_task_time)
+                    ))  # <- Вот здесь была пропущена закрывающая скобка
+                    break
 
         self.root.after(1000, self.update_time)
 
@@ -353,19 +337,14 @@ class TimeTracker:
         return result[0] if result else 0
 
     def pause_all(self):
-        """Постановка задач на паузу"""
+        """Остановка всех таймеров по кнопке"""
         if self.running_task:
             elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
             self.update_task_time(self.running_task['id'], int(elapsed))
             self.total_time += int(elapsed)
-
-            # Сохраняем всю информацию о задаче
-            self.paused_task = {
-                'id': self.running_task['id'],
-                'start_time': datetime.now()  # Фиксируем время паузы
-            }
+            # Сохраняем ID текущей задачи перед паузой
+            self.paused_task_id = self.running_task['id']
             self.running_task = None
-
         self.paused = True
         self.pause_btn.config(state=tk.DISABLED)
         self.resume_btn.config(state=tk.NORMAL)
@@ -373,17 +352,21 @@ class TimeTracker:
         self.update_total_time()
 
     def resume_all(self):
-        """Возобновление задач"""
-        if self.paused_task:
-            # Проверяем, что задача еще существует
-            self.c.execute("SELECT id FROM tasks WHERE id=?", (self.paused_task['id'],))
-            if self.c.fetchone():  # Если задача существует
-                self.running_task = {
-                    'id': self.paused_task['id'],
-                    'start_time': datetime.now()  # Новое время старта
-                }
-            self.paused_task = None
+        """Возобновление работы с выбранной задачей"""
+        if not hasattr(self, 'paused_task_id') or not self.paused_task_id:
+            messagebox.showwarning("Ошибка", "Не выбрана задача для продолжения")
+            return
 
+        # Проверяем, что задача существует
+        self.c.execute("SELECT 1 FROM tasks WHERE id=?", (self.paused_task_id,))
+        if not self.c.fetchone():
+            messagebox.showwarning("Ошибка", "Выбранная задача больше не существует")
+            self.paused_task_id = None
+            self.resume_btn.config(state=tk.DISABLED)
+            return
+
+        # Запускаем выбранную задачу
+        self.start_task_timer(self.paused_task_id)
         self.paused = False
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
@@ -406,36 +389,30 @@ class TimeTracker:
             self.exit_app()
 
     def export_to_xlsx(self):
-        """Экспорт данных в Excel файл"""
-        try:
-            today = datetime.now().strftime(self.DATE_FORMAT)
-            data = self.db_execute(
-                "SELECT date, login, regress, name, link, time FROM tasks WHERE date=?",
-                (today,)
-            ).fetchall()
+        # Экспорт в Excel
+        today = datetime.now().strftime("%d.%m.%Y")
+        self.c.execute("SELECT date, login, regress, name, link, time FROM tasks WHERE date=?", (today,))
+        data = self.c.fetchall()
 
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.append(self.EXCEL_HEADERS)
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        headers = ['Дата', 'Логин', 'Время', 'Регресс', 'Комментарий', 'Название рана', 'Ссылка']
+        ws.append(headers)
 
-            for row in data:
-                date, login, regress, name, link, time = row
-                ws.append([
-                    date,
-                    login,
-                    self.format_time(time),
-                    regress,
-                    "",  # Пустой столбец для комментариев
-                    name,
-                    link
-                ])
+        for row in data:
+            date, login, regress, name, link, time = row
+            ws.append([
+                date,
+                login,
+                self.format_time(time),
+                regress,
+                "",  # Пустой столбец для комментариев
+                name,
+                link
+            ])
 
-            filename = f"report_{datetime.now().strftime(self.EXCEL_DATE_FORMAT)}.xlsx"
-            wb.save(filename)
-            return True
-        except Exception as e:
-            messagebox.showerror("Ошибка экспорта", f"Не удалось экспортировать данные: {str(e)}")
-            return False
+        filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        wb.save(filename)
 
     def clear_day_data(self):
         # Очистка данных за день после экспорта
@@ -446,96 +423,23 @@ class TimeTracker:
         self.update_total_time()
 
     def hide_to_tray(self):
-        """Скрытие окна в трей"""
-        self.root.withdraw()  # Просто скрываем окно без подтверждения
+        # Скрытие окна в трей ДОРАБОТАТЬ ФЛОУ ФОНОВОЙ РАБОТЫ
+        self.root.withdraw()
 
     def restore_window(self, icon=None, item=None):
         # Восстановление окна из трея
         self.root.deiconify()
 
     def exit_app(self):
-        """Корректный выход из программы"""
-        if not hasattr(self, '_is_exiting'):
-            self._is_exiting = True
-            if self.confirm_exit() and self._finish_operations(True):
-                self.conn.close()
-                self.tray_icon.stop()
-                self.root.destroy()
-                sys.exit(0)
-            self._is_exiting = False
-
-    def confirm_exit(self):
-        """Окно подтверждения выхода с тремя вариантами"""
-        result = messagebox.askyesnocancel(
-            "Подтверждение выхода",
-            "Хотите экспортировать данные перед выходом?\n\n"
-            "Да - экспорт и выход\n"
-            "Нет - выход без экспорта\n"
-            "Отмена - продолжить работу"
-        )
-
-        if result is None:  # Отмена
-            return False
-        elif result:  # Да
-            self.export_to_xlsx()
-            self.clear_day_data()
-            return True
-        else:  # Нет
-            return True
-
-    def db_execute(self, query, params=()):
-        """Безопасное выполнение запроса к БД"""
-        try:
-            with self.conn:
-                return self.c.execute(query, params)
-        except sqlite3.Error as e:
-            messagebox.showerror("Ошибка БД", f"Database error: {str(e)}")
-            raise
-
-    def create_entry_field(self, parent, label_text, placeholder, row):
-        """Универсальное создание поля ввода с подсказкой"""
-        ttk.Label(parent, text=label_text).grid(row=row, column=0, sticky=tk.W)
-        entry = ttk.Entry(parent)
-        entry.grid(row=row, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(entry, placeholder)
-        return entry
-
-    def _finish_operations(self, with_export):
-        """Общие операции завершения работы"""
-        try:
-            if with_export:
-                if not self.export_to_xlsx():
-                    return False
-                self.clear_day_data()
-            return True
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при завершении: {str(e)}")
-            return False
-
-    def confirm_and_exit(self):
-        """Подтверждение и выход"""
-        result = messagebox.askyesnocancel(
-            "Подтверждение выхода",
-            "Хотите экспортировать данные перед выходом?\n\n"
-            "Да - экспорт и выход\n"
-            "Нет - выход без экспорта\n"
-            "Отмена - продолжить работу"
-        )
-
-        if result is None:  # Отмена
-            return
-        elif result:  # Да
-            self.export_to_xlsx()
-            self.clear_day_data()
-
+        # Корректный(?) выход из программы
         self.conn.close()
         self.tray_icon.stop()
         self.root.destroy()
         sys.exit(0)
 
+
 if __name__ == "__main__":
     root = tk.Tk()
     app = TimeTracker(root)
-    root.protocol('WM_DELETE_WINDOW', app.hide_to_tray)  # Оставляем только hide_to_tray
+    root.protocol('WM_DELETE_WINDOW', lambda: app.hide_to_tray() if messagebox.askyesno("Подтверждение", "Свернуть программу в трей?") else None)
     root.mainloop()
-
