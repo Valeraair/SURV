@@ -96,33 +96,81 @@ class TimeTracker:
         self.update_graph()
 
     def setup_tracking_tab(self):
-        # Панель управления
-        control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=3, columnspan=2, pady=5)
-
-        # Добавляем кнопку темы в начало панели управления
-        self.theme_btn = ttk.Button(control_frame, text="🌙" if not self.dark_mode else "☀️",
-                                  command=self.toggle_theme,
-                                  width=3)
-        self.theme_btn.pack(side=tk.LEFT, padx=10)
-
-        # Остальные кнопки остаются как есть
-        delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
-        delete_btn.pack(side=tk.LEFT, padx=10)
-
         """Настраивает вкладку трекинга задач"""
         tracking_frame = ttk.Frame(self.notebook)
         self.notebook.add(tracking_frame, text="Трекинг")
 
-        # Переносим весь основной UI сюда
+        # Верхняя панель с темой и временем
+        top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 10))
+        top_panel.pack(fill=tk.X)
+
+        # Кнопка темы в верхнем правом углу
+        self.theme_btn = ttk.Button(top_panel, text="🌙",
+                                    command=self.toggle_theme,
+                                    width=3)
+        self.theme_btn.pack(side=tk.RIGHT, padx=5)
+
+        # Общее время в верхнем левом углу
+        self.total_time_label = ttk.Label(top_panel,
+                                          text="Общее время: 00:00:00",
+                                          font=('Arial', 10, 'bold'))
+        self.total_time_label.pack(side=tk.LEFT, padx=5)
+
+        # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(1, weight=1)
 
+        # Поле логина
         ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(main_frame)
         self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Твой логин")
+        self.add_placeholder(self.login_entry, "Введите ваш логин")
+
+        # Форма задачи
+        task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
+        task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
+        task_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W)
+        self.regress_entry = ttk.Entry(task_frame)
+        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.regress_entry, "Название поверхности")
+
+        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W)
+        self.name_entry = ttk.Entry(task_frame)
+        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.name_entry, "Название тест-рана")
+
+        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W)
+        self.link_entry = ttk.Entry(task_frame)
+        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
+
+        self.extra_time = tk.BooleanVar()
+        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
+
+        add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
+        add_btn.grid(row=4, columnspan=2, pady=5)
+
+        # Список задач
+        self.tasks_list = ttk.Treeview(main_frame,
+                                       columns=('id', 'regress', 'name', 'status', 'time'),
+                                       show='headings',
+                                       height=10)
+        self.tasks_list.heading('id', text='ID')
+        self.tasks_list.heading('regress', text='Регресс')
+        self.tasks_list.heading('name', text='Название')
+        self.tasks_list.heading('status', text='Статус')
+        self.tasks_list.heading('time', text='Время')
+        self.tasks_list.column('id', width=40, anchor=tk.CENTER)
+        self.tasks_list.column('status', width=100, anchor=tk.CENTER)
+        self.tasks_list.column('time', width=80, anchor=tk.CENTER)
+        self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
+        self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
+
+        # Настройка расширения
+        main_frame.grid_rowconfigure(2, weight=1)
 
     def setup_ui(self):
         # Создаем панель вкладок
@@ -285,8 +333,6 @@ class TimeTracker:
                 task_id, regress, name, time = row
                 if self.running_task and self.running_task['id'] == task_id:
                     status = '▶ Активна'
-                    if hasattr(self, 'edit_btn'):
-                        self.edit_btn['state'] = tk.DISABLED
                 else:
                     if self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
                         status = '⏸ Выбрана'
@@ -301,18 +347,9 @@ class TimeTracker:
                     self.format_time(time)
                 ))
 
-            # Обновляем состояние кнопок
-            if not tasks:
-                self.paused_task_id = None
-                self.resume_btn.config(state=tk.DISABLED)
-                if hasattr(self, 'edit_btn'):
-                    self.edit_btn.config(state=tk.DISABLED)
-            else:
-                # Кнопка "Продолжить" активна, если есть задачи и нет активного таймера
-                self.resume_btn.config(state=tk.DISABLED if self.running_task else tk.NORMAL)
-                # Сохраняем первую задачу как paused_task_id, если нет активной
-                if not self.running_task:
-                    self.paused_task_id = tasks[0][0]
+            # Обновляем paused_task_id если есть задачи
+            if tasks and not self.running_task:
+                self.paused_task_id = tasks[0][0]
 
         except Exception as e:
             messagebox.showerror("Ошибка обновления", str(e))
@@ -369,8 +406,6 @@ class TimeTracker:
             self.running_task = None
 
         self.paused = True
-        self.pause_btn.config(state=tk.DISABLED)
-        self.resume_btn.config(state=tk.NORMAL)
         self.update_tasks()
         self.update_total_time()
         self.root.title("Work Time Tracker (⏸)")
@@ -393,7 +428,6 @@ class TimeTracker:
         if not self.task_exists(task_id):
             messagebox.showwarning("Ошибка", "Выбранная задача больше не существует")
             self.paused_task_id = None
-            self.resume_btn.config(state=tk.DISABLED)
             return
 
         # Запускаем задачу с сохранённым временем
@@ -405,8 +439,6 @@ class TimeTracker:
         }
 
         self.paused = False
-        self.pause_btn.config(state=tk.NORMAL)
-        self.resume_btn.config(state=tk.DISABLED)
         self.update_tasks()
         self.update_title()
 
@@ -610,7 +642,23 @@ class TimeTracker:
         tracking_frame = ttk.Frame(self.notebook)
         self.notebook.add(tracking_frame, text="Трекинг")
 
-        # Переносим весь основной UI сюда
+        # Верхняя панель с элементами управления
+        top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 5))
+        top_panel.pack(fill=tk.X)
+
+        # Общее время в верхней панели
+        self.total_time_label = ttk.Label(top_panel,
+                                          text="Общее время: 00:00:00",
+                                          font=('Arial', 10, 'bold'))
+        self.total_time_label.pack(side=tk.LEFT, padx=10)
+
+        # Кнопка темы в верхней панели справа
+        self.theme_btn = ttk.Button(top_panel, text="🌙",
+                                    command=self.toggle_theme,
+                                    width=3)
+        self.theme_btn.pack(side=tk.RIGHT, padx=5)
+
+        # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(1, weight=1)
@@ -648,43 +696,20 @@ class TimeTracker:
         add_btn.grid(row=4, columnspan=2, pady=5)
 
         # Список задач
-        self.tasks_list = ttk.Treeview(main_frame, columns=('id', 'regress', 'name', 'status', 'time'), show='headings')
+        self.tasks_list = ttk.Treeview(main_frame,
+                                       columns=('id', 'regress', 'name', 'status', 'time'),
+                                       show='headings',
+                                       height=12)
         self.tasks_list.heading('id', text='ID')
         self.tasks_list.heading('regress', text='Регресс')
         self.tasks_list.heading('name', text='Название')
         self.tasks_list.heading('status', text='Статус')
         self.tasks_list.heading('time', text='Время')
+        self.tasks_list.column('id', width=40, anchor=tk.CENTER)
         self.tasks_list.column('status', width=100, anchor=tk.CENTER)
+        self.tasks_list.column('time', width=80, anchor=tk.CENTER)
         self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
         self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
-
-        # Панель управления
-        control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=3, columnspan=2, pady=5)
-
-        # Кнопка переключения темы (добавлена здесь)
-        self.theme_btn = ttk.Button(control_frame, text="🌙",
-                                    command=self.toggle_theme,
-                                    width=3)
-        self.theme_btn.pack(side=tk.LEFT, padx=10)
-
-        delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
-        delete_btn.pack(side=tk.LEFT, padx=10)
-
-        self.total_time_label = ttk.Label(control_frame, text="Общее время: 00:00:00")
-        self.total_time_label.pack(side=tk.LEFT, padx=10)
-
-        self.pause_btn = ttk.Button(control_frame, text="Пауза", command=self.pause_all)
-        self.pause_btn.pack(side=tk.LEFT, padx=10)
-
-        self.resume_btn = ttk.Button(control_frame, text="Продолжить", command=self.resume_all, state=tk.DISABLED)
-        self.resume_btn.pack(side=tk.LEFT, padx=10)
-
-        finish_btn = ttk.Button(control_frame, text="Завершить день", command=self.finish_day)
-        finish_btn.pack(side=tk.LEFT, padx=10)
-
-        self.edit_btn = ttk.Button(control_frame, text="Изменить", command=self.edit_task, state=tk.DISABLED)
-        self.edit_btn.pack(side=tk.LEFT, padx=10)
 
         # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
@@ -961,6 +986,11 @@ class TimeTracker:
             label="Копировать ссылку",
             command=self.copy_task_link
         )
+        self.task_context_menu.add_separator()
+        self.task_context_menu.add_command(
+            label="Удалить",
+            command=self.delete_selected_task
+        )
 
         # Привязка к списку задач
         self.tasks_list.bind("<Button-3>", self.show_context_menu)
@@ -982,6 +1012,8 @@ class TimeTracker:
                 self.task_context_menu.entryconfig("Редактировать",
                                                    state=tk.NORMAL)
                 self.task_context_menu.entryconfig("Копировать ссылку",
+                                                   state=tk.NORMAL)
+                self.task_context_menu.entryconfig("Удалить",
                                                    state=tk.NORMAL)
 
                 self.task_context_menu.tk_popup(event.x_root, event.y_root)
@@ -1022,9 +1054,14 @@ class TimeTracker:
                 result = self.c.fetchone()
                 if result:
                     self.paused_task_id = result[0]
-                    self.resume_btn.config(state=tk.NORMAL)
             except Exception as e:
                 print(f"Ошибка при проверке задач: {e}")
+
+    def delete_selected_task(self):
+        """Удаляет выбранную задачу через контекстное меню"""
+        selected = self.tasks_list.selection()
+        if selected:
+            self.delete_task()
 
 if __name__ == "__main__":
     root = tk.Tk()
