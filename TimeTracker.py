@@ -138,7 +138,7 @@ class TimeTracker:
         ttk.Label(login_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(login_frame)
         self.login_entry.grid(row=0, column=1, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Введите ваш логин")
+        self.add_placeholder(self.login_entry, "Введите ваш логин")  # Подсказка для логина
 
         # Форма задачи с увеличенными отступами
         task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
@@ -149,14 +149,17 @@ class TimeTracker:
         ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W, pady=(0, 7))
         self.regress_entry = ttk.Entry(task_frame)
         self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW, pady=(0, 7))
+        self.add_placeholder(self.regress_entry, "Название поверхности")  # Подсказка для регресса
 
         ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W, pady=7)
         self.name_entry = ttk.Entry(task_frame)
         self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW, pady=7)
+        self.add_placeholder(self.name_entry, "Название тест-рана")  # Подсказка для названия
 
         ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W, pady=(7, 0))
         self.link_entry = ttk.Entry(task_frame)
         self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW, pady=(7, 0))
+        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")  # Подсказка для ссылки
 
         # Чекбокс и кнопки
         self.extra_time = tk.BooleanVar()
