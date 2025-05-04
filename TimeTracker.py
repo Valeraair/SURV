@@ -48,23 +48,31 @@ class TimeTracker:
         self.stats_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stats_frame, text="Статистика")
 
-        # Панель управления
+        # Панель управления с кнопками
         control_frame = ttk.Frame(self.stats_frame)
         control_frame.pack(fill=tk.X, padx=5, pady=5)
 
+        # Кнопки переключения типа графика
         ttk.Button(control_frame, text="Столбчатая",
-                  command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
+                   command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Круговая",
-                  command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
+                   command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
+
+        # Кнопка "Обновить" справа
         ttk.Button(control_frame, text="Обновить",
-                  command=self.update_graph).pack(side=tk.RIGHT, padx=5)
+                   command=self.update_graph).pack(side=tk.RIGHT, padx=5)
 
         # Область для графика
         self.graph_frame = ttk.Frame(self.stats_frame)
         self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Инициализация
-        self.current_graph_type = "bar"
+        # Заглушка при запуске
+        ttk.Label(self.graph_frame, text="Данные загружаются...",
+                  font=('Arial', 10), foreground='gray').pack(expand=True)
+
+    def switch_graph(self, graph_type):
+        """Переключает тип графика"""
+        self.current_graph_type = graph_type
         self.update_graph()
 
     def setup_tracking_tab(self):
@@ -85,7 +93,7 @@ class TimeTracker:
         ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(main_frame)
         self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Введите ваш логин")
+        self.add_placeholder(self.login_entry, "Твой логин")
 
     def setup_ui(self):
         # Создаем панель вкладок
@@ -417,9 +425,11 @@ class TimeTracker:
         self.root.deiconify()
 
     def exit_app(self):
-        # Корректный(?) выход из программы
+        """Корректный выход из программы"""
+        plt.close('all')  # Закрываем все графики matplotlib
         self.conn.close()
-        self.tray_icon.stop()
+        if hasattr(self, 'tray_icon'):
+            self.tray_icon.stop()
         self.root.destroy()
         sys.exit(0)
 
@@ -596,32 +606,44 @@ class TimeTracker:
         # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
 
-    def switch_graph(self, graph_type):
-        """Переключает тип графика"""
-        self.current_graph_type = graph_type
-        self.update_graph()
-
     def setup_stats_tab(self):
         """Настраивает вкладку статистики"""
         self.stats_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stats_frame, text="Статистика")
 
-        # Панель управления
-        control_frame = ttk.Frame(self.stats_frame)
-        control_frame.pack(fill=tk.X, padx=5, pady=5)
+        # Главный контейнер
+        container = ttk.Frame(self.stats_frame)
+        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        ttk.Button(control_frame, text="Столбчатая",
+        # Панель управления (новая версия)
+        control_frame = ttk.Frame(container)
+        control_frame.pack(fill=tk.X, pady=(0, 10))
+
+        # Группа кнопок слева
+        btn_frame = ttk.Frame(control_frame)
+        btn_frame.pack(side=tk.LEFT)
+
+        ttk.Button(btn_frame, text="Столбчатая",
                    command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
-        ttk.Button(control_frame, text="Круговая",
+        ttk.Button(btn_frame, text="Круговая",
                    command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
 
+        # Кнопка "Обновить" справа
+        ttk.Button(control_frame, text="Обновить",
+                   command=self.update_graph).pack(side=tk.RIGHT, padx=5)
+
         # Область для графика
-        self.graph_frame = ttk.Frame(self.stats_frame)
-        self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.graph_frame = ttk.Frame(container)
+        self.graph_frame.pack(fill=tk.BOTH, expand=True)
 
         # Заглушка при запуске
-        ttk.Label(self.graph_frame, text="Нажмите 'Обновить' для загрузки данных",
+        ttk.Label(self.graph_frame, text="Данные загружаются...",
                   font=('Arial', 10), foreground='gray').pack(expand=True)
+
+    def switch_graph(self, graph_type):
+        """Переключает тип графика"""
+        self.current_graph_type = graph_type
+        self.update_graph()
 
     def update_graph(self):
         """Обновляет график на основе текущих данных"""
