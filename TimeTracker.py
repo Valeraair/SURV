@@ -19,8 +19,12 @@ class TimeTracker:
     def __init__(self, root):
         self.root = root
         self.root.title("Work Time Tracker")
+        self.dark_mode = False  # Флаг темной темы
+        # Инициализация стилей
+        self.style = ttk.Style()
+        self.style.theme_use('clam')  # Базовая тема, которая хорошо кастомизируется
         self.setup_db()
-        self.setup_ui()  # Должно быть перед update_tasks()
+        self.setup_ui()
         self.setup_tray()
         self.running_task = None
         self.paused = False
@@ -28,8 +32,9 @@ class TimeTracker:
         self.total_time = 0
         self.current_graph_type = "bar"
         self.root.after(1000, self.update_time)
-        self.update_tasks()  # Теперь tasks_list будет создан
+        self.update_tasks()
         self.update_total_time()
+        self.load_theme()  # Загружаем сохраненную тему
 
     def setup_db(self):
         # Инициализация БД
@@ -78,6 +83,20 @@ class TimeTracker:
         self.update_graph()
 
     def setup_tracking_tab(self):
+        # Панель управления
+        control_frame = ttk.Frame(main_frame)
+        control_frame.grid(row=3, columnspan=2, pady=5)
+
+        # Добавляем кнопку темы в начало панели управления
+        self.theme_btn = ttk.Button(control_frame, text="🌙" if not self.dark_mode else "☀️",
+                                  command=self.toggle_theme,
+                                  width=3)
+        self.theme_btn.pack(side=tk.LEFT, padx=10)
+
+        # Остальные кнопки остаются как есть
+        delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
+        delete_btn.pack(side=tk.LEFT, padx=10)
+
         """Настраивает вкладку трекинга задач"""
         tracking_frame = ttk.Frame(self.notebook)
         self.notebook.add(tracking_frame, text="Трекинг")
@@ -87,11 +106,6 @@ class TimeTracker:
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(1, weight=1)
 
-        # Сюда вставляем ВЕСЬ предыдущий UI код из старого setup_ui()
-        # (от "Поле логина" до "Настройка расширения")
-        # Только меняем root на tracking_frame/main_frame где нужно
-
-        # Пример (вам нужно перенести ВЕСЬ разметку):
         ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(main_frame)
         self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
@@ -582,6 +596,12 @@ class TimeTracker:
         control_frame = ttk.Frame(main_frame)
         control_frame.grid(row=3, columnspan=2, pady=5)
 
+        # Кнопка переключения темы (добавлена здесь)
+        self.theme_btn = ttk.Button(control_frame, text="🌙",
+                                    command=self.toggle_theme,
+                                    width=3)
+        self.theme_btn.pack(side=tk.LEFT, padx=10)
+
         delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
         delete_btn.pack(side=tk.LEFT, padx=10)
 
@@ -635,47 +655,43 @@ class TimeTracker:
         self.update_graph()
 
     def update_graph(self):
-        """Обновляет график на основе текущих данных"""
-        # Очищаем предыдущий график
+        """Обновляет график с учётом текущей темы"""
         for widget in self.graph_frame.winfo_children():
             widget.destroy()
 
         try:
-            # Простой запрос для начала
-            self.c.execute("""
-                           SELECT name, SUM(time)
-                           FROM tasks
-                           WHERE time > 0
-                           GROUP BY name
-                           """)
+            # Создаем фигуру с учетом темы
+            fig = Figure(figsize=(6, 4), dpi=100,
+                         facecolor="#2d2d2d" if self.dark_mode else "#f0f0f0")
+            ax = fig.add_subplot(111,
+                                 facecolor="#2d2d2d" if self.dark_mode else "#f0f0f0")
+
+            # Получаем данные
+            self.c.execute("SELECT name, SUM(time) FROM tasks GROUP BY name")
             data = self.c.fetchall()
 
             if not data:
-                raise ValueError("Нет данных с ненулевым временем")
-
-            names = [item[0] for item in data]
-            times = [item[1] / 3600 for item in data]  # Переводим секунды в часы
-
-            # Создаем фигуру matplotlib
-            fig = Figure(figsize=(6, 4), dpi=100)
-            ax = fig.add_subplot(111)
-
-            if self.current_graph_type == "bar":
-                bars = ax.bar(names, times)
-                ax.set_title("Затраченное время по задачам (часы)")
-                ax.set_ylabel("Часы")
-                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-
-                # Добавляем подписи значений
-                for bar in bars:
-                    height = bar.get_height()
-                    ax.text(bar.get_x() + bar.get_width() / 2., height,
-                            f'{height:.1f}',
-                            ha='center', va='bottom')
+                ax.text(0.5, 0.5, "Нет данных для отображения",
+                        ha='center', va='center',
+                        color="#ffffff" if self.dark_mode else "#000000")
             else:
-                ax.pie(times, labels=names, autopct='%1.1f%%')
-                ax.set_title("Распределение времени по задачам")
-                ax.axis('equal')  # Круглый пирог
+                names = [x[0] for x in data]
+                times = [x[1] / 3600 for x in data]  # в часах
+
+                if self.current_graph_type == "bar":
+                    bars = ax.bar(names, times)
+                    ax.set_ylabel('Часы')
+                    ax.set_title('Время по задачам')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
+                else:
+                    ax.pie(times, labels=names, autopct='%1.1f%%')
+                    ax.set_title('Распределение времени')
+
+            # Настройка цветов
+            ax.xaxis.label.set_color("#ffffff" if self.dark_mode else "#000000")
+            ax.yaxis.label.set_color("#ffffff" if self.dark_mode else "#000000")
+            ax.title.set_color("#ffffff" if self.dark_mode else "#000000")
+            ax.tick_params(colors="#ffffff" if self.dark_mode else "#000000")
 
             # Встраиваем график
             canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
@@ -683,10 +699,16 @@ class TimeTracker:
             canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
         except Exception as e:
-            # Если ошибка или нет данных
-            ttk.Label(self.graph_frame,
-                      text="Добавьте задачи и начните работу,\nчтобы увидеть статистику",
-                      font=('Arial', 10), foreground='gray').pack(expand=True)
+            ttk.Label(self.graph_frame, text=f"Ошибка: {str(e)}",
+                      foreground="red").pack()
+
+    def update_graph_theme(self):
+        """Обновление темы графиков"""
+        if self.dark_mode:
+            plt.style.use('dark_background')
+        else:
+            plt.style.use('default')
+        self.update_graph()
 
     def safe_exit(self):
         """Безопасное завершение программы"""
@@ -702,6 +724,50 @@ class TimeTracker:
         finally:
             sys.exit(0)
 
+    def toggle_theme(self):
+        """Переключение между светлой и темной темой"""
+        self.dark_mode = not self.dark_mode
+        self.theme_btn.config(text="☀️" if self.dark_mode else "🌙")  # Обновляем иконку
+        self.apply_theme()
+        self.save_theme()
+
+    def apply_theme(self):
+        """Применение выбранной темы"""
+        bg_color = "#2d2d2d" if self.dark_mode else "#f0f0f0"
+        fg_color = "#ffffff" if self.dark_mode else "#000000"
+        entry_bg = "#3d3d3d" if self.dark_mode else "#ffffff"
+
+        style = ttk.Style()
+
+        # Основные стили
+        style.configure(".", background=bg_color, foreground=fg_color)
+        style.configure("TFrame", background=bg_color)
+        style.configure("TLabel", background=bg_color, foreground=fg_color)
+        style.configure("TButton", background=bg_color, foreground=fg_color)
+        style.configure("TEntry", fieldbackground=entry_bg, foreground=fg_color)
+        style.configure("Treeview",
+                        background=entry_bg,
+                        foreground=fg_color,
+                        fieldbackground=entry_bg)
+        style.map('Treeview', background=[('selected', '#4a6987' if self.dark_mode else '#0078d7')])
+
+        # Применяем стили ко всем виджетам
+        self.root.configure(bg=bg_color)
+        self.update_graph_theme()
+
+    def save_theme(self):
+        """Сохранение темы в файл"""
+        with open('theme.cfg', 'w') as f:
+            f.write('dark' if self.dark_mode else 'light')
+
+    def load_theme(self):
+        """Загрузка темы из файла"""
+        try:
+            with open('theme.cfg', 'r') as f:
+                self.dark_mode = f.read() == 'dark'
+            self.apply_theme()
+        except:
+            self.dark_mode = False
 
 if __name__ == "__main__":
     root = tk.Tk()
