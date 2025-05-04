@@ -33,6 +33,7 @@ class TimeTracker:
         self.style.configure("TNotebook.Tab", padding=[10, 5])
         self.setup_db()
         self.setup_ui()
+        self.setup_task_context_menu()
         self.setup_tray()
         self.running_task = None
         self.paused = False
@@ -45,6 +46,7 @@ class TimeTracker:
         self.load_theme()  # Загружаем сохраненную тему
         self.paused_task_time = 0
         self.title_template = "{regress} | {name} | {time} | Всего: {total}"
+        self.setup_task_context_menu()
 
     def setup_db(self):
         # Инициализация БД
@@ -282,7 +284,8 @@ class TimeTracker:
                 task_id, regress, name, time = row
                 if self.running_task and self.running_task['id'] == task_id:
                     status = '▶ Активна'
-                    self.edit_btn['state'] = tk.DISABLED  # Блокируем кнопку для активной задачи
+                    if hasattr(self, 'edit_btn'):  # Проверяем перед доступом
+                        self.edit_btn['state'] = tk.DISABLED
                 else:
                     if self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
                         status = '⏸ Выбрана'
@@ -301,7 +304,8 @@ class TimeTracker:
             if not tasks:
                 self.paused_task_id = None
                 self.resume_btn.config(state=tk.DISABLED)
-                self.edit_btn.config(state=tk.DISABLED)
+                if hasattr(self, 'edit_btn'):
+                    self.edit_btn.config(state=tk.DISABLED)
             elif self.paused:
                 self.resume_btn.config(state=tk.NORMAL)
 
@@ -311,8 +315,8 @@ class TimeTracker:
     def on_task_select(self, event):
         """Обработчик выбора задачи в списке"""
         selected = self.tasks_list.selection()
-        # Кнопка "Изменить" всегда активна при выборе задачи
-        self.edit_btn['state'] = tk.NORMAL if selected else tk.DISABLED
+        if hasattr(self, 'edit_btn'):  # Проверяем существование кнопки
+            self.edit_btn['state'] = tk.NORMAL if selected else tk.DISABLED
 
     def format_time(self, seconds):
         # Форматирование времени
@@ -811,32 +815,32 @@ class TimeTracker:
         self.save_theme()
 
     def apply_theme(self):
-        """Применение выбранной темы"""
+        """Применяет текущую тему ко всем элементам интерфейса"""
+        # Определяем цвета для текущей темы
         if self.dark_mode:
             # Темная тема
-            bg_color = "#1E1E1E"  # Основной фон
-            fg_color = "#E0E0E0"  # Текст
-            border_color = "#2D2D2D"  # Тёмные границы (почти сливаются с фоном)
-            separator_color = "#333333"  # Цвет разделителей
-
-            # Доп. цвета
+            bg_color = "#1E1E1E"
+            fg_color = "#E0E0E0"
             entry_bg = "#252525"
             button_bg = "#333333"
+            active_bg = "#4A6987"
+            border_color = "#2D2D2D"
+            separator_color = "#333333"
         else:
-            # Светлая тема (оставляем как было)
+            # Светлая тема
             bg_color = "#F5F5F5"
             fg_color = "#000000"
+            entry_bg = "#FFFFFF"
+            button_bg = "#E0E0E0"
+            active_bg = "#0078D7"
             border_color = "#CCCCCC"
             separator_color = "#E0E0E0"
 
-            # Доп. цвета
-            entry_bg = "#FFFFFF"
-            button_bg = "#E0E0E0"
-
+        # Настраиваем стиль ttk
         style = ttk.Style()
         style.theme_use('clam')
 
-        # Основные настройки
+        # Общие настройки
         style.configure('.',
                         background=bg_color,
                         foreground=fg_color,
@@ -844,42 +848,30 @@ class TimeTracker:
                         darkcolor=border_color,
                         lightcolor=border_color)
 
-        # Специально для разделителей
-        style.configure("TSeparator",
-                        background=separator_color)
+        # Конкретные элементы
+        style.configure("TFrame", background=bg_color)
+        style.configure("TLabel", background=bg_color, foreground=fg_color)
+        style.configure("TEntry", fieldbackground=entry_bg, foreground=fg_color)
+        style.configure("TButton", background=button_bg, foreground=fg_color)
+        style.configure("TNotebook", background=bg_color)
+        style.configure("TNotebook.Tab", background=bg_color, foreground=fg_color)
+        style.configure("Treeview", background=entry_bg, foreground=fg_color,
+                        fieldbackground=entry_bg)
+        style.map("Treeview", background=[('selected', active_bg)])
 
-        # Настройка Notebook (вкладок)
-        style.configure("TNotebook",
-                        background=bg_color,
-                        bordercolor=border_color)
-        style.configure("TNotebook.Tab",
-                        background=bg_color,
-                        foreground=fg_color,
-                        bordercolor=border_color,
-                        padding=[10, 5])
+        # Контекстное меню (если существует)
+        if hasattr(self, 'task_context_menu'):
+            self.task_context_menu.config(
+                bg=bg_color,
+                fg=fg_color,
+                activebackground=active_bg,
+                activeforeground=fg_color
+            )
 
-        # Treeview (список задач)
-        style.configure("Treeview",
-                        background=entry_bg,
-                        foreground=fg_color,
-                        fieldbackground=entry_bg,
-                        bordercolor=border_color)
-
-        # Кнопки и поля ввода
-        style.configure("TButton",
-                        background=button_bg,
-                        foreground=fg_color)
-        style.configure("TEntry",
-                        fieldbackground=entry_bg,
-                        foreground=fg_color)
-
-        # LabelFrame
-        style.configure("TLabelframe",
-                        background=bg_color,
-                        bordercolor=border_color)
-
-        # Принудительно обновляем все элементы
+        # Применяем к корневому окну
         self.root.config(bg=bg_color)
+
+        # Обновляем графики
         self.update_graph_theme()
 
     def save_theme(self):
@@ -930,6 +922,83 @@ class TimeTracker:
         """Возвращает кортеж (regress, name) для задачи"""
         self.c.execute("SELECT regress, name FROM tasks WHERE id=?", (task_id,))
         return self.c.fetchone() or ("", "")
+
+    def setup_task_context_menu(self):
+        """Создаёт контекстное меню для задач"""
+        self.task_context_menu = tk.Menu(self.root, tearoff=0)
+
+        # Настройка цветов в зависимости от темы
+        menu_bg = "#2D2D2D" if self.dark_mode else "#F5F5F5"
+        menu_fg = "#E0E0E0" if self.dark_mode else "#000000"
+        active_bg = "#4A6987" if self.dark_mode else "#0078D7"
+
+        self.task_context_menu.configure(
+            bg=menu_bg,
+            fg=menu_fg,
+            activebackground=active_bg,
+            activeforeground=menu_fg
+        )
+
+        # Элементы меню
+        self.task_context_menu.add_command(
+            label="Продолжить",
+            command=self.resume_selected_task
+        )
+        self.task_context_menu.add_command(
+            label="Пауза",
+            command=self.pause_all
+        )
+        self.task_context_menu.add_command(
+            label="Редактировать",
+            command=self.edit_selected_task
+        )
+        self.task_context_menu.add_command(
+            label="Копировать ссылку",
+            command=self.copy_task_link
+        )
+
+        # Привязка к списку задач
+        self.tasks_list.bind("<Button-3>", self.show_context_menu)
+
+    def show_context_menu(self, event):
+        """Показывает контекстное меню"""
+        try:
+            item = self.tasks_list.identify_row(event.y)
+            if item:
+                self.tasks_list.selection_set(item)
+
+                # Обновляем состояния пунктов меню
+                task_id = self.tasks_list.item(item)['values'][0]
+                is_active = self.running_task and self.running_task['id'] == task_id
+
+                self.task_context_menu.entryconfig("Продолжить",
+                                                   state=tk.NORMAL if self.paused else tk.DISABLED)
+                self.task_context_menu.entryconfig("Пауза",
+                                                   state=tk.NORMAL if not self.paused and is_active else tk.DISABLED)
+
+                self.task_context_menu.tk_popup(event.x_root, event.y_root)
+        except Exception as e:
+            print(f"Ошибка показа меню: {e}")
+
+    def edit_selected_task(self):
+        """Редактирует выбранную задачу"""
+        self.edit_task()
+
+    def copy_task_link(self):
+        """Копирует ссылку задачи в буфер обмена"""
+        selected = self.tasks_list.selection()
+        if selected:
+            task_id = self.tasks_list.item(selected[0])['values'][0]
+            self.c.execute("SELECT link FROM tasks WHERE id=?", (task_id,))
+            link = self.c.fetchone()[0]
+            self.root.clipboard_clear()
+            self.root.clipboard_append(link)
+            # Можно добавить уведомление
+            self.show_notification("Ссылка скопирована")
+
+    def resume_selected_task(self):
+        """Продолжает выбранную задачу"""
+        self.resume_all()
 
 if __name__ == "__main__":
     root = tk.Tk()
