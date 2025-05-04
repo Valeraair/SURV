@@ -44,6 +44,7 @@ class TimeTracker:
         self.update_total_time()
         self.load_theme()  # Загружаем сохраненную тему
         self.paused_task_time = 0
+        self.title_template = "{regress} | {name} | {time} | Всего: {total}"
 
     def setup_db(self):
         # Инициализация БД
@@ -896,16 +897,21 @@ class TimeTracker:
             self.dark_mode = False
 
     def update_title(self):
-        """Обновляет заголовок окна с учётом накопленного времени"""
+        """Обновляет заголовок окна с полными названиями задач"""
         if self.running_task and not self.paused:
             elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
-            task_name = self.get_task_name(self.running_task['id'])
+
+            # Получаем полные данные задачи без обрезки
+            self.c.execute("SELECT regress, name FROM tasks WHERE id=?", (self.running_task['id'],))
+            regress, name = self.c.fetchone()
+
             total_task_time = self.get_task_time(self.running_task['id']) + elapsed
 
             self.root.title(
                 self.title_template.format(
-                    task=task_name[:20],
-                    time=self.format_time(total_task_time),  # Показываем общее время задачи
+                    regress=regress,  # Полное название регресса
+                    name=name,  # Полное название задачи
+                    time=self.format_time(total_task_time),
                     total=self.format_time(self.total_time + elapsed)
                 )
             )
@@ -919,6 +925,11 @@ class TimeTracker:
         self.c.execute("SELECT name FROM tasks WHERE id=?", (task_id,))
         result = self.c.fetchone()
         return result[0] if result else "Новая задача"
+
+    def get_task_details(self, task_id):
+        """Возвращает кортеж (regress, name) для задачи"""
+        self.c.execute("SELECT regress, name FROM tasks WHERE id=?", (task_id,))
+        return self.c.fetchone() or ("", "")
 
 if __name__ == "__main__":
     root = tk.Tk()
