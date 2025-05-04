@@ -1,3 +1,4 @@
+from datetime import timedelta
 import tkinter as tk
 from tkinter import ttk, messagebox
 import sqlite3
@@ -299,15 +300,8 @@ class TimeTracker:
     def on_task_select(self, event):
         """Обработчик выбора задачи в списке"""
         selected = self.tasks_list.selection()
-        if not selected:
-            self.edit_btn['state'] = tk.DISABLED
-            return
-
-        task_id = self.tasks_list.item(selected[0])['values'][0]
-
-        # Разрешаем редактирование только для неактивных задач
-        is_active = self.running_task and self.running_task['id'] == task_id
-        self.edit_btn['state'] = tk.DISABLED if is_active else tk.NORMAL
+        # Кнопка "Изменить" всегда активна при выборе задачи
+        self.edit_btn['state'] = tk.NORMAL if selected else tk.DISABLED
 
     def format_time(self, seconds):
         # Форматирование времени
@@ -468,6 +462,9 @@ class TimeTracker:
 
         task_id = self.tasks_list.item(selected[0])['values'][0]
 
+        # Проверяем, активна ли выбранная задача
+        is_active = self.running_task and self.running_task['id'] == task_id
+
         # Получаем текущие данные задачи (кроме времени)
         self.c.execute("SELECT regress, name, link FROM tasks WHERE id=?", (task_id,))
         regress, name, link = self.c.fetchone()
@@ -511,7 +508,13 @@ class TimeTracker:
                 return
 
             try:
-                # Обновляем только текст задачи, время остается прежним
+                # Если задача активна, временно останавливаем таймер
+                if is_active:
+                    elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
+                    self.update_task_time(task_id, int(elapsed))
+                    self.total_time += int(elapsed)
+
+                # Обновляем данные задачи
                 self.c.execute("""
                                UPDATE tasks
                                SET regress = ?,
@@ -521,11 +524,18 @@ class TimeTracker:
                                """, (new_regress, new_name, new_link, task_id))
                 self.conn.commit()
 
+                # Если задача была активна, возобновляем таймер
+                if is_active:
+                    self.running_task['start_time'] = datetime.now()
+
                 self.update_tasks()
                 edit_win.destroy()
                 messagebox.showinfo("Успех", "Задача успешно обновлена")
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Не удалось обновить задачу: {str(e)}")
+                # Если задача была активна и произошла ошибка, возобновляем таймер
+                if is_active:
+                    self.running_task['start_time'] = datetime.now() - timedelta(seconds=elapsed)
 
         ttk.Button(buttons_frame, text="Сохранить", command=save_changes).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Отмена", command=edit_win.destroy).pack(side=tk.LEFT, padx=5)
