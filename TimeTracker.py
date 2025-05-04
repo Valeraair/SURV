@@ -18,7 +18,8 @@ import sys
 class TimeTracker:
     def __init__(self, root):
         self.root = root
-        self.root.title("Work Time Tracker")
+        self.root.title("Work Time Tracker")  # Стандартный заголовок
+        self.title_template = "[▶ {task}] {time} | Всего: {total}"  # Шаблон
         self.dark_mode = False
 
         # Инициализация стилей
@@ -211,18 +212,15 @@ class TimeTracker:
     def start_task_timer(self, task_id):
         """Явный запуск таймера для задачи"""
         if self.running_task:
-            elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
-            self.update_task_time(self.running_task['id'], int(elapsed))
-            self.total_time += int(elapsed)
+            elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
+            self.update_task_time(self.running_task['id'], elapsed)
+            self.total_time += elapsed
 
         # Запускаем новую задачу
         self.running_task = {'id': task_id, 'start_time': datetime.now()}
         self.paused = False
-        self.pause_btn.config(state=tk.NORMAL)
-        self.resume_btn.config(state=tk.DISABLED)
-        self.edit_btn.config(state=tk.DISABLED)  # Блокируем кнопку при запуске
         self.update_tasks()
-        self.update_total_time()
+        self.update_title()  # Обновляем заголовок
 
     def clear_task_fields(self):
         # Очистка полей ввода задачи
@@ -322,26 +320,38 @@ class TimeTracker:
         if self.running_task and not self.paused:
             elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
             current_total = self.total_time + elapsed
-            self.total_time_label.config(text=f"Общее время: {self.format_time(current_total)}")
 
-            # Обновляем отображение времени для текущей задачи
+            # Обновляем заголовок окна
+            try:
+                task_name = self.get_task_name(self.running_task['id'])
+                self.root.title(
+                    self.title_template.format(
+                        task=task_name[:20],
+                        time=self.format_time(elapsed),
+                        total=self.format_time(current_total)
+                    )
+                )
+            except Exception as e:
+                print(f"Ошибка обновления заголовка: {e}")
+
+            # Обновляем задачу в списке
             for item in self.tasks_list.get_children():
                 values = self.tasks_list.item(item)['values']
                 if values[0] == self.running_task['id']:
-                    total_task_time = self.get_task_time(self.running_task['id']) + elapsed
+                    total_time = self.get_task_time(self.running_task['id']) + elapsed
                     self.tasks_list.item(item, values=(
                         values[0],
                         values[1],
                         values[2],
                         '▶ Активна',
-                        self.format_time(total_task_time)
-                    ))  # <- Вот здесь была пропущена закрывающая скобка
+                        self.format_time(total_time)
+                    ))
                     break
 
         self.root.after(1000, self.update_time)
 
     def get_task_time(self, task_id):
-        #Получение времени задачи из БД
+        """Возвращает сохранённое время задачи из БД"""
         self.c.execute("SELECT time FROM tasks WHERE id=?", (task_id,))
         result = self.c.fetchone()
         return result[0] if result else 0
@@ -361,6 +371,7 @@ class TimeTracker:
         self.resume_btn.config(state=tk.NORMAL)
         self.update_tasks()
         self.update_total_time()
+        self.root.title("Work Time Tracker (⏸)")
 
     def resume_all(self):
         """Возобновление работы с выбранной задачей"""
@@ -390,6 +401,9 @@ class TimeTracker:
         self.paused = False
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
+
+        # Обновляем заголовок
+        self.update_title()
 
     def update_total_time(self):
         # Обновление общего времени
@@ -885,6 +899,29 @@ class TimeTracker:
             self.apply_theme()
         except:
             self.dark_mode = False
+
+    def update_title(self):
+        """Обновляет заголовок окна"""
+        if self.running_task and not self.paused:
+            elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
+            task_name = self.get_task_name(self.running_task['id'])
+            self.root.title(
+                self.title_template.format(
+                    task=task_name[:20],
+                    time=self.format_time(elapsed),
+                    total=self.format_time(self.total_time + elapsed)
+                )
+            )
+        elif self.paused:
+            self.root.title("Work Time Tracker (⏸)")
+        else:
+            self.root.title("Work Time Tracker")
+
+    def get_task_name(self, task_id):
+        """Возвращает название задачи по ID"""
+        self.c.execute("SELECT name FROM tasks WHERE id=?", (task_id,))
+        result = self.c.fetchone()
+        return result[0] if result else "Новая задача"
 
 if __name__ == "__main__":
     root = tk.Tk()
