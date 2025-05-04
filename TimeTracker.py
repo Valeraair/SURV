@@ -38,6 +38,7 @@ class TimeTracker:
         self.running_task = None
         self.paused = False
         self.paused_task_id = None
+        self.check_for_paused_task()
         self.total_time = 0
         self.current_graph_type = "bar"
         self.root.after(1000, self.update_time)
@@ -284,7 +285,7 @@ class TimeTracker:
                 task_id, regress, name, time = row
                 if self.running_task and self.running_task['id'] == task_id:
                     status = '▶ Активна'
-                    if hasattr(self, 'edit_btn'):  # Проверяем перед доступом
+                    if hasattr(self, 'edit_btn'):
                         self.edit_btn['state'] = tk.DISABLED
                 else:
                     if self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
@@ -306,8 +307,12 @@ class TimeTracker:
                 self.resume_btn.config(state=tk.DISABLED)
                 if hasattr(self, 'edit_btn'):
                     self.edit_btn.config(state=tk.DISABLED)
-            elif self.paused:
-                self.resume_btn.config(state=tk.NORMAL)
+            else:
+                # Кнопка "Продолжить" активна, если есть задачи и нет активного таймера
+                self.resume_btn.config(state=tk.DISABLED if self.running_task else tk.NORMAL)
+                # Сохраняем первую задачу как paused_task_id, если нет активной
+                if not self.running_task:
+                    self.paused_task_id = tasks[0][0]
 
         except Exception as e:
             messagebox.showerror("Ошибка обновления", str(e))
@@ -966,15 +971,18 @@ class TimeTracker:
             item = self.tasks_list.identify_row(event.y)
             if item:
                 self.tasks_list.selection_set(item)
-
-                # Обновляем состояния пунктов меню
                 task_id = self.tasks_list.item(item)['values'][0]
                 is_active = self.running_task and self.running_task['id'] == task_id
 
+                # Обновляем состояния пунктов меню
                 self.task_context_menu.entryconfig("Продолжить",
-                                                   state=tk.NORMAL if self.paused else tk.DISABLED)
+                                                   state=tk.NORMAL if not self.running_task else tk.DISABLED)
                 self.task_context_menu.entryconfig("Пауза",
-                                                   state=tk.NORMAL if not self.paused and is_active else tk.DISABLED)
+                                                   state=tk.NORMAL if is_active else tk.DISABLED)
+                self.task_context_menu.entryconfig("Редактировать",
+                                                   state=tk.NORMAL)
+                self.task_context_menu.entryconfig("Копировать ссылку",
+                                                   state=tk.NORMAL)
 
                 self.task_context_menu.tk_popup(event.x_root, event.y_root)
         except Exception as e:
@@ -997,8 +1005,26 @@ class TimeTracker:
             self.show_notification("Ссылка скопирована")
 
     def resume_selected_task(self):
-        """Продолжает выбранную задачу"""
-        self.resume_all()
+        """Продолжает выбранную задачу из контекстного меню"""
+        selected = self.tasks_list.selection()
+        if selected:
+            task_id = self.tasks_list.item(selected[0])['values'][0]
+            if not self.running_task:  # Если нет активной задачи
+                self.paused_task_id = task_id
+                self.resume_all()
+
+    def check_for_paused_task(self):
+        """Проверяет есть ли задачи для продолжения при запуске"""
+        if not self.running_task:
+            try:
+                self.c.execute("SELECT id FROM tasks WHERE date=? LIMIT 1",
+                               (datetime.now().strftime("%d.%m.%Y"),))
+                result = self.c.fetchone()
+                if result:
+                    self.paused_task_id = result[0]
+                    self.resume_btn.config(state=tk.NORMAL)
+            except Exception as e:
+                print(f"Ошибка при проверке задач: {e}")
 
 if __name__ == "__main__":
     root = tk.Tk()
