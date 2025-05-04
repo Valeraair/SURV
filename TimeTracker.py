@@ -108,52 +108,80 @@ class TimeTracker:
         """Настраивает вкладку трекинга задач"""
         tracking_frame = ttk.Frame(self.notebook)
         self.notebook.add(tracking_frame, text="Трекинг")
-        top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 10))
+
+        # Верхняя панель с элементами управления
+        top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 5))
         top_panel.pack(fill=tk.X)
+
+        # Общее время в верхней панели
+        self.total_time_label = ttk.Label(top_panel,
+                                          text="Общее время: 00:00:00",
+                                          font=('Arial', 10, 'bold'))
+        self.total_time_label.pack(side=tk.LEFT, padx=10)
+
+        # Кнопка темы в верхней панели справа
         self.theme_btn = ttk.Button(top_panel, text="🌙",
                                     command=self.toggle_theme,
                                     width=3)
         self.theme_btn.pack(side=tk.RIGHT, padx=5)
-        self.total_time_label = ttk.Label(top_panel,
-                                          text="Общее время: 00:00:00",
-                                          font=('Arial', 10, 'bold'))
-        self.total_time_label.pack(side=tk.LEFT, padx=5)
+
+        # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(1, weight=1)
-        ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.login_entry = ttk.Entry(main_frame)
-        self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
+
+        # Поле логина (центрированное и выровненное)
+        login_frame = ttk.Frame(main_frame)
+        login_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        login_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(login_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.login_entry = ttk.Entry(login_frame)
+        self.login_entry.grid(row=0, column=1, sticky=tk.EW)
         self.add_placeholder(self.login_entry, "Введите ваш логин")
+
+        # Форма задачи с увеличенными отступами
         task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
         task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
         task_frame.grid_columnconfigure(1, weight=1)
 
-        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W)
+        # Увеличиваем отступы между полями (pady)
+        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W, pady=(0, 7))
         self.regress_entry = ttk.Entry(task_frame)
-        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.regress_entry, "Название поверхности")
+        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW, pady=(0, 7))
 
-        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W)
+        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W, pady=7)
         self.name_entry = ttk.Entry(task_frame)
-        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.name_entry, "Название тест-рана")
+        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW, pady=7)
 
-        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W)
+        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W, pady=(7, 0))
         self.link_entry = ttk.Entry(task_frame)
-        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
+        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW, pady=(7, 0))
 
+        # Чекбокс и кнопки
         self.extra_time = tk.BooleanVar()
-        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
+        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(
+            row=3, columnspan=2, pady=(10, 5))
 
-        add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
-        add_btn.grid(row=4, columnspan=2, pady=5)
+        # Фрейм для кнопок с отступами
+        buttons_frame = ttk.Frame(task_frame)
+        buttons_frame.grid(row=4, columnspan=2, pady=(5, 0), sticky=tk.EW)
+        buttons_frame.grid_columnconfigure(0, weight=1)
+        buttons_frame.grid_columnconfigure(1, weight=1)
+
+        # Кнопки с отступами между ними
+        add_btn = ttk.Button(buttons_frame, text="Добавить", command=self.add_task, style="Accent.TButton")
+        add_btn.grid(row=0, column=0, padx=(0, 5), sticky=tk.EW)
+
+        finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day, style="Accent.TButton")
+        finish_btn.grid(row=0, column=1, padx=(5, 0), sticky=tk.EW)
+
+        # Список задач
         self.tasks_list = ttk.Treeview(main_frame,
                                        columns=('id', 'regress', 'name', 'status', 'time'),
                                        show='headings',
                                        height=12,
-                                       style="Custom.Treeview")  # Добавляем кастомный стиль
+                                       style="Treeview")
         self.tasks_list.heading('id', text='ID')
         self.tasks_list.heading('regress', text='Регресс')
         self.tasks_list.heading('name', text='Название')
@@ -164,6 +192,8 @@ class TimeTracker:
         self.tasks_list.column('time', width=80, anchor=tk.CENTER)
         self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
         self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
+
+        # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
 
     def setup_ui(self):
@@ -635,95 +665,6 @@ class TimeTracker:
 
         ttk.Button(buttons_frame, text="Сохранить", command=save_changes).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Отмена", command=edit_win.destroy).pack(side=tk.LEFT, padx=5)
-
-    def setup_tracking_tab(self):
-        """Настраивает вкладку трекинга задач"""
-        tracking_frame = ttk.Frame(self.notebook)
-        self.notebook.add(tracking_frame, text="Трекинг")
-
-        # Верхняя панель с элементами управления
-        top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 5))
-        top_panel.pack(fill=tk.X)
-
-        # Общее время в верхней панели
-        self.total_time_label = ttk.Label(top_panel,
-                                          text="Общее время: 00:00:00",
-                                          font=('Arial', 10, 'bold'))
-        self.total_time_label.pack(side=tk.LEFT, padx=10)
-
-        # Кнопка темы в верхней панели справа
-        self.theme_btn = ttk.Button(top_panel, text="🌙",
-                                    command=self.toggle_theme,
-                                    width=3)
-        self.theme_btn.pack(side=tk.RIGHT, padx=5)
-
-        # Основной контент
-        main_frame = ttk.Frame(tracking_frame, padding=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.grid_columnconfigure(1, weight=1)
-
-        # Поле логина
-        ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.login_entry = ttk.Entry(main_frame)
-        self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Введите ваш логин")
-
-        # Форма задачи
-        task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
-        task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
-        task_frame.grid_columnconfigure(1, weight=1)
-
-        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W)
-        self.regress_entry = ttk.Entry(task_frame)
-        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.regress_entry, "Название поверхности")
-
-        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W)
-        self.name_entry = ttk.Entry(task_frame)
-        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.name_entry, "Название тест-рана")
-
-        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W)
-        self.link_entry = ttk.Entry(task_frame)
-        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
-
-        self.extra_time = tk.BooleanVar()
-        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
-
-        # Фрейм для кнопок Добавить и Завершить день
-        buttons_frame = ttk.Frame(task_frame)
-        buttons_frame.grid(row=4, columnspan=2, pady=5, sticky=tk.EW)
-
-        # Кнопка Добавить
-        add_btn = ttk.Button(buttons_frame, text="Добавить", command=self.add_task)
-        add_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        # Кнопка Завершить день
-        finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day)
-        finish_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
-
-        add_btn = ttk.Button(buttons_frame, text="Добавить", command=self.add_task, style="Accent.TButton")
-        finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day, style="Accent.TButton")
-
-        # Список задач
-        self.tasks_list = ttk.Treeview(main_frame,
-                                       columns=('id', 'regress', 'name', 'status', 'time'),
-                                       show='headings',
-                                       height=12)
-        self.tasks_list.heading('id', text='ID')
-        self.tasks_list.heading('regress', text='Регресс')
-        self.tasks_list.heading('name', text='Название')
-        self.tasks_list.heading('status', text='Статус')
-        self.tasks_list.heading('time', text='Время')
-        self.tasks_list.column('id', width=40, anchor=tk.CENTER)
-        self.tasks_list.column('status', width=100, anchor=tk.CENTER)
-        self.tasks_list.column('time', width=80, anchor=tk.CENTER)
-        self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
-        self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
-
-        # Настройка расширения
-        main_frame.grid_rowconfigure(2, weight=1)
 
     def setup_stats_tab(self):
         """Настраивает вкладку статистики"""
