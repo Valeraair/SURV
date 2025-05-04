@@ -1,3 +1,5 @@
+import matplotlib
+matplotlib.use('TkAgg')  # Важно добавить перед другими импортами matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -425,13 +427,8 @@ class TimeTracker:
         self.root.deiconify()
 
     def exit_app(self):
-        """Корректный выход из программы"""
-        plt.close('all')  # Закрываем все графики matplotlib
-        self.conn.close()
-        if hasattr(self, 'tray_icon'):
-            self.tray_icon.stop()
-        self.root.destroy()
-        sys.exit(0)
+        """Вызывается при выходе из программы"""
+        self.safe_exit()
 
     def update_task_time(self, task_id, seconds):
         # Обновление времени задачи в БД
@@ -611,34 +608,26 @@ class TimeTracker:
         self.stats_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stats_frame, text="Статистика")
 
-        # Главный контейнер
-        container = ttk.Frame(self.stats_frame)
-        container.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # Контейнер для управления
+        control_frame = ttk.Frame(self.stats_frame)
+        control_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # Панель управления (новая версия)
-        control_frame = ttk.Frame(container)
-        control_frame.pack(fill=tk.X, pady=(0, 10))
+        # Левая группа кнопок
+        left_btn_frame = ttk.Frame(control_frame)
+        left_btn_frame.pack(side=tk.LEFT)
 
-        # Группа кнопок слева
-        btn_frame = ttk.Frame(control_frame)
-        btn_frame.pack(side=tk.LEFT)
-
-        ttk.Button(btn_frame, text="Столбчатая",
+        ttk.Button(left_btn_frame, text="Столбчатая",
                    command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="Круговая",
+        ttk.Button(left_btn_frame, text="Круговая",
                    command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
 
         # Кнопка "Обновить" справа
         ttk.Button(control_frame, text="Обновить",
                    command=self.update_graph).pack(side=tk.RIGHT, padx=5)
 
-        # Область для графика
-        self.graph_frame = ttk.Frame(container)
+        # Область графика
+        self.graph_frame = ttk.Frame(self.stats_frame)
         self.graph_frame.pack(fill=tk.BOTH, expand=True)
-
-        # Заглушка при запуске
-        ttk.Label(self.graph_frame, text="Данные загружаются...",
-                  font=('Arial', 10), foreground='gray').pack(expand=True)
 
     def switch_graph(self, graph_type):
         """Переключает тип графика"""
@@ -699,9 +688,37 @@ class TimeTracker:
                       text="Добавьте задачи и начните работу,\nчтобы увидеть статистику",
                       font=('Arial', 10), foreground='gray').pack(expand=True)
 
+    def safe_exit(self):
+        """Безопасное завершение программы"""
+        try:
+            plt.close('all')  # Закрываем все фигуры matplotlib
+            if hasattr(self, 'conn'):
+                self.conn.close()
+            if hasattr(self, 'tray_icon'):
+                self.tray_icon.stop()
+            self.root.quit()  # Корректное завершение mainloop
+        except Exception as e:
+            print(f"Ошибка при завершении: {e}")
+        finally:
+            sys.exit(0)
+
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = TimeTracker(root)
-    root.protocol('WM_DELETE_WINDOW', lambda: app.hide_to_tray() if messagebox.askyesno("Подтверждение", "Свернуть программу в трей?") else None)
-    root.mainloop()
+
+    # Обработчик закрытия окна
+    root.protocol('WM_DELETE_WINDOW', lambda: (
+        app.hide_to_tray() if messagebox.askyesno(
+            "Подтверждение",
+            "Свернуть программу в трей?"
+        ) else app.safe_exit()
+    ))
+
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        app.safe_exit()
+    except Exception as e:
+        print(f"Неожиданная ошибка: {e}")
+        app.safe_exit()
