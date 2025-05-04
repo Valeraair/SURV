@@ -57,6 +57,9 @@ class TimeTracker:
                                    ("!selected", "black" if not self.dark_mode else "white")],
                        relief=[("selected", "flat"),
                                ("!selected", "raised")])
+        self.style.configure("Accent.TButton",
+                             font=('Arial', 9, 'bold'),
+                             padding=5)
 
     def setup_db(self):
         self.conn = sqlite3.connect('timetracker.db')
@@ -681,6 +684,9 @@ class TimeTracker:
         finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day)
         finish_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
 
+        add_btn = ttk.Button(buttons_frame, text="Добавить", command=self.add_task, style="Accent.TButton")
+        finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day, style="Accent.TButton")
+
         # Список задач
         self.tasks_list = ttk.Treeview(main_frame,
                                        columns=('id', 'regress', 'name', 'status', 'time'),
@@ -832,50 +838,29 @@ class TimeTracker:
 
     def apply_theme(self):
         """Применяет текущую тему ко всем элементам интерфейса"""
-        # Определяем цвета для текущей темы
         if self.dark_mode:
             # Темная тема
             bg_color = "#1E1E1E"
             fg_color = "#E0E0E0"
-            inactive_tab_bg = "#333333"
-            # ... остальные цвета ...
-        else:
-            # Светлая тема
-            bg_color = "#F5F5F5"
-            fg_color = "#000000"
-            inactive_tab_bg = "#F0F0F0"
-            # ... остальные цвета ...
-
-        # Обновляем стиль вкладок
-        self.style.map("TNotebook.Tab",
-                       background=[("selected", bg_color),
-                                   ("!selected", inactive_tab_bg)],
-                       foreground=[("selected", fg_color),
-                                   ("!selected", fg_color)])
-
-        # ... остальной код метода ...
-        """Применяет текущую тему ко всем элементам интерфейса"""
-        # Определяем цвета для текущей темы
-        if self.dark_mode:
-            # Темная тема
-            bg_color = "#1E1E1E"
-            fg_color = "#E0E0E0"
-            entry_bg = "#252525"
             button_bg = "#333333"
-            active_bg = "#4A6987"
+            button_hover = "#4A4A4A"  # Более мягкий цвет при наведении
+            active_bg = "#2D5D7B"  # Менее контрастный активный цвет
+            entry_bg = "#252525"
             border_color = "#2D2D2D"
             separator_color = "#333333"
+            tab_bg_inactive = "#333333"
         else:
-            # Светлая тема
+            # Светлая тема (оставляем как было)
             bg_color = "#F5F5F5"
             fg_color = "#000000"
-            entry_bg = "#FFFFFF"
             button_bg = "#E0E0E0"
+            button_hover = "#D0D0D0"
             active_bg = "#0078D7"
+            entry_bg = "#FFFFFF"
             border_color = "#CCCCCC"
             separator_color = "#E0E0E0"
+            tab_bg_inactive = "#F0F0F0"
 
-        # Настраиваем стиль ttk
         style = ttk.Style()
         style.theme_use('clam')
 
@@ -887,30 +872,52 @@ class TimeTracker:
                         darkcolor=border_color,
                         lightcolor=border_color)
 
-        # Конкретные элементы
-        style.configure("TFrame", background=bg_color)
-        style.configure("TLabel", background=bg_color, foreground=fg_color)
-        style.configure("TEntry", fieldbackground=entry_bg, foreground=fg_color)
-        style.configure("TButton", background=button_bg, foreground=fg_color)
-        style.configure("TNotebook", background=bg_color)
-        style.configure("TNotebook.Tab", background=bg_color, foreground=fg_color)
-        style.configure("Treeview", background=entry_bg, foreground=fg_color,
-                        fieldbackground=entry_bg)
-        style.map("Treeview", background=[('selected', active_bg)])
+        # Настройка кнопок
+        style.configure("TButton",
+                        background=button_bg,
+                        foreground=fg_color,
+                        bordercolor=border_color)
+        style.map("TButton",
+                  background=[('active', button_hover),
+                              ('!active', button_bg)],
+                  foreground=[('active', fg_color),
+                              ('!active', fg_color)],
+                  relief=[('pressed', 'sunken'),
+                          ('!pressed', 'raised')])
 
-        # Контекстное меню (если существует)
-        if hasattr(self, 'task_context_menu'):
-            self.task_context_menu.config(
-                bg=bg_color,
-                fg=fg_color,
-                activebackground=active_bg,
-                activeforeground=fg_color
-            )
+        # Настройка Treeview (список задач)
+        style.configure("Treeview",
+                        background=entry_bg,
+                        foreground=fg_color,
+                        fieldbackground=entry_bg)
+        style.map("Treeview",
+                  background=[('selected', active_bg)],
+                  foreground=[('selected', fg_color)])
+
+        # Настройка заголовков Treeview
+        style.configure("Treeview.Heading",
+                        background=button_bg,
+                        foreground=fg_color,
+                        relief="raised")
+        style.map("Treeview.Heading",
+                  background=[('active', button_hover)],
+                  relief=[('pressed', 'sunken'),
+                          ('!pressed', 'raised')])
+
+        # Настройка вкладок
+        style.configure("TNotebook.Tab",
+                        background=tab_bg_inactive,
+                        foreground=fg_color,
+                        padding=[10, 5],
+                        relief="flat")
+        style.map("TNotebook.Tab",
+                  background=[("selected", bg_color),
+                              ("!selected", tab_bg_inactive)],
+                  relief=[("selected", "flat"),
+                          ("!selected", "raised")])
 
         # Применяем к корневому окну
         self.root.config(bg=bg_color)
-
-        # Обновляем графики
         self.update_graph_theme()
 
     def save_theme(self):
@@ -966,16 +973,24 @@ class TimeTracker:
         """Создаёт контекстное меню для задач"""
         self.task_context_menu = tk.Menu(self.root, tearoff=0)
 
-        # Настройка цветов в зависимости от темы
-        menu_bg = "#2D2D2D" if self.dark_mode else "#F5F5F5"
-        menu_fg = "#E0E0E0" if self.dark_mode else "#000000"
-        active_bg = "#4A6987" if self.dark_mode else "#0078D7"
+        # Цвета для темной темы
+        if self.dark_mode:
+            menu_bg = "#2D2D2D"
+            menu_fg = "#E0E0E0"
+            active_bg = "#2D5D7B"  # Мягкий синий вместо контрастного
+            active_fg = "#FFFFFF"
+        else:
+            menu_bg = "#F5F5F5"
+            menu_fg = "#000000"
+            active_bg = "#0078D7"
+            active_fg = "#FFFFFF"
 
         self.task_context_menu.configure(
             bg=menu_bg,
             fg=menu_fg,
             activebackground=active_bg,
-            activeforeground=menu_fg
+            activeforeground=active_fg,
+            selectcolor=active_bg
         )
 
         # Элементы меню
