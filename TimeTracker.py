@@ -19,10 +19,17 @@ class TimeTracker:
     def __init__(self, root):
         self.root = root
         self.root.title("Work Time Tracker")
-        self.dark_mode = False  # Флаг темной темы
+        self.dark_mode = False
+
         # Инициализация стилей
         self.style = ttk.Style()
-        self.style.theme_use('clam')  # Базовая тема, которая хорошо кастомизируется
+        self.style.theme_use('clam')
+
+        # Убираем жирные границы у Notebook
+        self.style.configure(".", relief="flat")
+        self.style.map("TButton", relief=[('active', 'flat'), ('!active', 'flat')])
+        self.style.configure("TNotebook", borderwidth=1)
+        self.style.configure("TNotebook.Tab", padding=[10, 5])
         self.setup_db()
         self.setup_ui()
         self.setup_tray()
@@ -660,11 +667,23 @@ class TimeTracker:
             widget.destroy()
 
         try:
-            # Создаем фигуру с учетом темы
+            # Цвета для темной/светлой темы
+            if self.dark_mode:
+                bg_color = "#1E1E1E"
+                text_color = "#E0E0E0"
+                grid_color = "#3A3A3A"
+                bar_color = "#4A6987"
+            else:
+                bg_color = "#FFFFFF"
+                text_color = "#000000"
+                grid_color = "#D0D0D0"
+                bar_color = "#0078D7"
+
+            # Создаем фигуру
             fig = Figure(figsize=(6, 4), dpi=100,
-                         facecolor="#2d2d2d" if self.dark_mode else "#f0f0f0")
+                         facecolor=bg_color)
             ax = fig.add_subplot(111,
-                                 facecolor="#2d2d2d" if self.dark_mode else "#f0f0f0")
+                                 facecolor=bg_color)
 
             # Получаем данные
             self.c.execute("SELECT name, SUM(time) FROM tasks GROUP BY name")
@@ -673,25 +692,35 @@ class TimeTracker:
             if not data:
                 ax.text(0.5, 0.5, "Нет данных для отображения",
                         ha='center', va='center',
-                        color="#ffffff" if self.dark_mode else "#000000")
+                        color=text_color)
             else:
                 names = [x[0] for x in data]
                 times = [x[1] / 3600 for x in data]  # в часах
 
                 if self.current_graph_type == "bar":
-                    bars = ax.bar(names, times)
-                    ax.set_ylabel('Часы')
-                    ax.set_title('Время по задачам')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
-                else:
-                    ax.pie(times, labels=names, autopct='%1.1f%%')
-                    ax.set_title('Распределение времени')
+                    bars = ax.bar(names, times, color=bar_color)
+                    ax.set_ylabel('Часы', color=text_color)
+                    ax.set_title('Время по задачам', color=text_color)
 
-            # Настройка цветов
-            ax.xaxis.label.set_color("#ffffff" if self.dark_mode else "#000000")
-            ax.yaxis.label.set_color("#ffffff" if self.dark_mode else "#000000")
-            ax.title.set_color("#ffffff" if self.dark_mode else "#000000")
-            ax.tick_params(colors="#ffffff" if self.dark_mode else "#000000")
+                    # Настройка сетки и осей
+                    ax.grid(color=grid_color, linestyle='--', alpha=0.5)
+                    ax.tick_params(axis='x', colors=text_color, rotation=45)
+                    ax.tick_params(axis='y', colors=text_color)
+
+                    # Подписи значений
+                    for bar in bars:
+                        height = bar.get_height()
+                        ax.text(bar.get_x() + bar.get_width() / 2., height,
+                                f'{height:.1f}',
+                                ha='center', va='bottom',
+                                color=text_color)
+                else:
+                    # Для круговой диаграммы используем приятные цвета
+                    colors = ['#4A6987', '#5D8AA8', '#7EB6FF', '#003366', '#1E1E1E']
+                    ax.pie(times, labels=names, autopct='%1.1f%%',
+                           colors=colors[:len(times)],
+                           textprops={'color': text_color})
+                    ax.set_title('Распределение времени', color=text_color)
 
             # Встраиваем график
             canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
@@ -733,26 +762,74 @@ class TimeTracker:
 
     def apply_theme(self):
         """Применение выбранной темы"""
-        bg_color = "#2d2d2d" if self.dark_mode else "#f0f0f0"
-        fg_color = "#ffffff" if self.dark_mode else "#000000"
-        entry_bg = "#3d3d3d" if self.dark_mode else "#ffffff"
+        if self.dark_mode:
+            # Темная тема
+            bg_color = "#1E1E1E"  # Основной фон
+            fg_color = "#E0E0E0"  # Текст
+            border_color = "#2D2D2D"  # Тёмные границы (почти сливаются с фоном)
+            separator_color = "#333333"  # Цвет разделителей
+
+            # Доп. цвета
+            entry_bg = "#252525"
+            button_bg = "#333333"
+        else:
+            # Светлая тема (оставляем как было)
+            bg_color = "#F5F5F5"
+            fg_color = "#000000"
+            border_color = "#CCCCCC"
+            separator_color = "#E0E0E0"
+
+            # Доп. цвета
+            entry_bg = "#FFFFFF"
+            button_bg = "#E0E0E0"
 
         style = ttk.Style()
+        style.theme_use('clam')
 
-        # Основные стили
-        style.configure(".", background=bg_color, foreground=fg_color)
-        style.configure("TFrame", background=bg_color)
-        style.configure("TLabel", background=bg_color, foreground=fg_color)
-        style.configure("TButton", background=bg_color, foreground=fg_color)
-        style.configure("TEntry", fieldbackground=entry_bg, foreground=fg_color)
+        # Основные настройки
+        style.configure('.',
+                        background=bg_color,
+                        foreground=fg_color,
+                        bordercolor=border_color,
+                        darkcolor=border_color,
+                        lightcolor=border_color)
+
+        # Специально для разделителей
+        style.configure("TSeparator",
+                        background=separator_color)
+
+        # Настройка Notebook (вкладок)
+        style.configure("TNotebook",
+                        background=bg_color,
+                        bordercolor=border_color)
+        style.configure("TNotebook.Tab",
+                        background=bg_color,
+                        foreground=fg_color,
+                        bordercolor=border_color,
+                        padding=[10, 5])
+
+        # Treeview (список задач)
         style.configure("Treeview",
                         background=entry_bg,
                         foreground=fg_color,
-                        fieldbackground=entry_bg)
-        style.map('Treeview', background=[('selected', '#4a6987' if self.dark_mode else '#0078d7')])
+                        fieldbackground=entry_bg,
+                        bordercolor=border_color)
 
-        # Применяем стили ко всем виджетам
-        self.root.configure(bg=bg_color)
+        # Кнопки и поля ввода
+        style.configure("TButton",
+                        background=button_bg,
+                        foreground=fg_color)
+        style.configure("TEntry",
+                        fieldbackground=entry_bg,
+                        foreground=fg_color)
+
+        # LabelFrame
+        style.configure("TLabelframe",
+                        background=bg_color,
+                        bordercolor=border_color)
+
+        # Принудительно обновляем все элементы
+        self.root.config(bg=bg_color)
         self.update_graph_theme()
 
     def save_theme(self):
