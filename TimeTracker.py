@@ -146,8 +146,7 @@ class TimeTracker:
             entry.config(foreground='grey')
 
     def setup_tray(self):
-        """Настройка иконки в системном трее"""
-        # Создаем изображение для иконки
+        """Инициализация иконки трея (без запуска)"""
         image = Image.new('RGB', (16, 16), 'black')
         self.tray_menu = pystray.Menu(
             pystray.MenuItem('Открыть', self.restore_window),
@@ -451,37 +450,46 @@ class TimeTracker:
             self.tray_running = False
 
     def hide_to_tray(self):
-        """Скрытие окна в трей"""
-        self.root.withdraw()
-
-        # Если иконка уже существует, не создаем новую
+        """Скрытие в трей с защитой от повторного запуска"""
         if self.tray_icon is not None:
             return
 
-        # Создаем новую иконку
+        self.root.withdraw()
+
+        # Создаем новую иконку при каждом сворачивании
         image = Image.new('RGB', (16, 16), 'black')
         self.tray_icon = pystray.Icon("time_tracker", image, "Time Tracker", self.tray_menu)
 
-        # Запускаем в отдельном потоке
-        self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+        # Запускаем в отдельном потоке с обработкой ошибок
+        def run_icon():
+            try:
+                self.tray_icon.run()
+            except Exception as e:
+                print(f"Ошибка трея: {e}")
+            finally:
+                self.tray_icon = None
+
+        self.tray_thread = threading.Thread(target=run_icon, daemon=True)
         self.tray_thread.start()
 
     def restore_window(self, icon=None, item=None):
-        """Восстановление окна из трея"""
-        if self.tray_icon is not None:
+        """Восстановление окна с защитой от дублирования"""
+        if self.tray_icon:
             try:
                 self.tray_icon.stop()
-            except:
-                pass
-            self.tray_icon = None
+            except Exception as e:
+                print(f"Ошибка при остановке трея: {e}")
+            finally:
+                self.tray_icon = None
 
-        self.root.deiconify()
-        self.root.after(100, self.root.lift)
+        if not self.root.winfo_viewable():
+            self.root.deiconify()
+            self.root.after(100, lambda: self.root.focus_force())
 
     def exit_app(self, icon=None, item=None):
-        """Завершение работы приложения"""
-        self.restore_window()  # Сначала восстанавливаем окно
-        self.safe_exit()
+        """Безопасный выход"""
+        self.restore_window()
+        self.root.after(200, self.safe_exit)
 
     def update_task_time(self, task_id, seconds):
         # Обновление времени задачи в БД
