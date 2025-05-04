@@ -1,6 +1,6 @@
 import threading
 import matplotlib
-matplotlib.use('TkAgg')  # Важно добавить перед другими импортами matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -18,15 +18,11 @@ import sys
 class TimeTracker:
     def __init__(self, root):
         self.root = root
-        self.root.title("Work Time Tracker")  # Стандартный заголовок
-        self.title_template = "[▶ {task}] {time} | Всего: {total}"  # Шаблон
+        self.root.title("Work Time Tracker")
+        self.title_template = "[▶ {task}] {time} | Всего: {total}"
         self.dark_mode = False
-
-        # Инициализация стилей
         self.style = ttk.Style()
         self.style.theme_use('clam')
-
-        # Убираем жирные границы у Notebook
         self.style.configure(".", relief="flat")
         self.style.map("TButton", relief=[('active', 'flat'), ('!active', 'flat')])
         self.style.configure("TNotebook", borderwidth=1)
@@ -44,13 +40,25 @@ class TimeTracker:
         self.root.after(1000, self.update_time)
         self.update_tasks()
         self.update_total_time()
-        self.load_theme()  # Загружаем сохраненную тему
+        self.load_theme()
         self.paused_task_time = 0
         self.title_template = "{regress} | {name} | {time} | Всего: {total}"
         self.setup_task_context_menu()
+        self.style.configure("TNotebook.Tab",
+                             padding=[10, 5],
+                             relief="flat",
+                             borderwidth=1)
+
+        # Стиль для неактивной вкладки (будет выглядеть как выделенная)
+        self.style.map("TNotebook.Tab",
+                       background=[("selected", self.style.lookup("TFrame", "background")),
+                                   ("!selected", "#F0F0F0" if not self.dark_mode else "#333333")],
+                       foreground=[("selected", "black" if not self.dark_mode else "white"),
+                                   ("!selected", "black" if not self.dark_mode else "white")],
+                       relief=[("selected", "flat"),
+                               ("!selected", "raised")])
 
     def setup_db(self):
-        # Инициализация БД
         self.conn = sqlite3.connect('timetracker.db')
         self.c = self.conn.cursor()
         self.c.execute('''CREATE TABLE IF NOT EXISTS tasks
@@ -67,26 +75,16 @@ class TimeTracker:
         """Настраивает вкладку статистики"""
         self.stats_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.stats_frame, text="Статистика")
-
-        # Панель управления с кнопками
         control_frame = ttk.Frame(self.stats_frame)
         control_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        # Кнопки переключения типа графика
         ttk.Button(control_frame, text="Столбчатая",
                    command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
         ttk.Button(control_frame, text="Круговая",
                    command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
-
-        # Кнопка "Обновить" справа
         ttk.Button(control_frame, text="Обновить",
                    command=self.update_graph).pack(side=tk.RIGHT, padx=5)
-
-        # Область для графика
         self.graph_frame = ttk.Frame(self.stats_frame)
         self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # Заглушка при запуске
         ttk.Label(self.graph_frame, text="Данные загружаются...",
                   font=('Arial', 10), foreground='gray').pack(expand=True)
 
@@ -99,35 +97,23 @@ class TimeTracker:
         """Настраивает вкладку трекинга задач"""
         tracking_frame = ttk.Frame(self.notebook)
         self.notebook.add(tracking_frame, text="Трекинг")
-
-        # Верхняя панель с темой и временем
         top_panel = ttk.Frame(tracking_frame, padding=(5, 5, 5, 10))
         top_panel.pack(fill=tk.X)
-
-        # Кнопка темы в верхнем правом углу
         self.theme_btn = ttk.Button(top_panel, text="🌙",
                                     command=self.toggle_theme,
                                     width=3)
         self.theme_btn.pack(side=tk.RIGHT, padx=5)
-
-        # Общее время в верхнем левом углу
         self.total_time_label = ttk.Label(top_panel,
                                           text="Общее время: 00:00:00",
                                           font=('Arial', 10, 'bold'))
         self.total_time_label.pack(side=tk.LEFT, padx=5)
-
-        # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
         main_frame.grid_columnconfigure(1, weight=1)
-
-        # Поле логина
         ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(main_frame)
         self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
         self.add_placeholder(self.login_entry, "Введите ваш логин")
-
-        # Форма задачи
         task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
         task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
         task_frame.grid_columnconfigure(1, weight=1)
@@ -152,8 +138,6 @@ class TimeTracker:
 
         add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
         add_btn.grid(row=4, columnspan=2, pady=5)
-
-        # Список задач
         self.tasks_list = ttk.Treeview(main_frame,
                                        columns=('id', 'regress', 'name', 'status', 'time'),
                                        show='headings',
@@ -168,8 +152,6 @@ class TimeTracker:
         self.tasks_list.column('time', width=80, anchor=tk.CENTER)
         self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
         self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
-
-        # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
 
     def setup_ui(self):
@@ -177,10 +159,10 @@ class TimeTracker:
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        # Вкладка трекинга (только задачи)
+        # Вкладка трекинга (первая - будет активной по умолчанию)
         self.setup_tracking_tab()
 
-        # Вкладка статистики (только графики)
+        # Вкладка статистики
         self.setup_stats_tab()
 
     def add_placeholder(self, entry, text):
@@ -210,7 +192,6 @@ class TimeTracker:
         self.tray_thread = None
 
     def add_task(self):
-        # Проверка заполнения обязательных полей
         login = self.login_entry.get().strip()
         regress = self.regress_entry.get().strip()
         name = self.name_entry.get().strip()
@@ -268,22 +249,18 @@ class TimeTracker:
             elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
             self.update_task_time(self.running_task['id'], elapsed)
             self.total_time += elapsed
-
-        # Запускаем новую задачу
         self.running_task = {'id': task_id, 'start_time': datetime.now()}
         self.paused = False
         self.update_tasks()
-        self.update_title()  # Обновляем заголовок
+        self.update_title()
 
     def clear_task_fields(self):
-        # Очистка полей ввода задачи
         self.regress_entry.delete(0, tk.END)
         self.name_entry.delete(0, tk.END)
         self.link_entry.delete(0, tk.END)
         self.extra_time.set(False)
 
     def delete_task(self):
-        # Удаление выбранной задачи
         selected = self.tasks_list.selection()
         if not selected:
             return
@@ -692,8 +669,17 @@ class TimeTracker:
         self.extra_time = tk.BooleanVar()
         ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
 
-        add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
-        add_btn.grid(row=4, columnspan=2, pady=5)
+        # Фрейм для кнопок Добавить и Завершить день
+        buttons_frame = ttk.Frame(task_frame)
+        buttons_frame.grid(row=4, columnspan=2, pady=5, sticky=tk.EW)
+
+        # Кнопка Добавить
+        add_btn = ttk.Button(buttons_frame, text="Добавить", command=self.add_task)
+        add_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
+
+        # Кнопка Завершить день
+        finish_btn = ttk.Button(buttons_frame, text="Завершить день", command=self.finish_day)
+        finish_btn.pack(side=tk.LEFT, padx=5, expand=True, fill=tk.X)
 
         # Список задач
         self.tasks_list = ttk.Treeview(main_frame,
@@ -845,6 +831,29 @@ class TimeTracker:
         self.save_theme()
 
     def apply_theme(self):
+        """Применяет текущую тему ко всем элементам интерфейса"""
+        # Определяем цвета для текущей темы
+        if self.dark_mode:
+            # Темная тема
+            bg_color = "#1E1E1E"
+            fg_color = "#E0E0E0"
+            inactive_tab_bg = "#333333"
+            # ... остальные цвета ...
+        else:
+            # Светлая тема
+            bg_color = "#F5F5F5"
+            fg_color = "#000000"
+            inactive_tab_bg = "#F0F0F0"
+            # ... остальные цвета ...
+
+        # Обновляем стиль вкладок
+        self.style.map("TNotebook.Tab",
+                       background=[("selected", bg_color),
+                                   ("!selected", inactive_tab_bg)],
+                       foreground=[("selected", fg_color),
+                                   ("!selected", fg_color)])
+
+        # ... остальной код метода ...
         """Применяет текущую тему ко всем элементам интерфейса"""
         # Определяем цвета для текущей темы
         if self.dark_mode:
