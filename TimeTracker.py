@@ -601,33 +601,48 @@ class TimeTracker:
         self.current_graph_type = graph_type
         self.update_graph()
 
+    def setup_stats_tab(self):
+        """Настраивает вкладку статистики"""
+        self.stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_frame, text="Статистика")
+
+        # Панель управления
+        control_frame = ttk.Frame(self.stats_frame)
+        control_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Button(control_frame, text="Столбчатая",
+                   command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Круговая",
+                   command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
+
+        # Область для графика
+        self.graph_frame = ttk.Frame(self.stats_frame)
+        self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Заглушка при запуске
+        ttk.Label(self.graph_frame, text="Нажмите 'Обновить' для загрузки данных",
+                  font=('Arial', 10), foreground='gray').pack(expand=True)
+
     def update_graph(self):
         """Обновляет график на основе текущих данных"""
         # Очищаем предыдущий график
         for widget in self.graph_frame.winfo_children():
             widget.destroy()
 
-        # Получаем данные из БД (более надежный запрос)
         try:
+            # Простой запрос для начала
             self.c.execute("""
-                           SELECT CASE
-                                      WHEN name LIKE '%[ДОП]%' THEN 'Доп. задачи'
-                                      WHEN name LIKE '%тест%' THEN 'Тестирование'
-                                      ELSE 'Прочее'
-                                      END   as category,
-                                  SUM(time) as total_time
+                           SELECT name, SUM(time)
                            FROM tasks
-                           WHERE date >= date ('now', '-30 days')
-                           GROUP BY category
-                           HAVING total_time > 0
-                           ORDER BY total_time DESC
+                           WHERE time > 0
+                           GROUP BY name
                            """)
             data = self.c.fetchall()
 
             if not data:
-                raise ValueError("Нет данных")
+                raise ValueError("Нет данных с ненулевым временем")
 
-            categories = [item[0] for item in data]
+            names = [item[0] for item in data]
             times = [item[1] / 3600 for item in data]  # Переводим секунды в часы
 
             # Создаем фигуру matplotlib
@@ -635,10 +650,10 @@ class TimeTracker:
             ax = fig.add_subplot(111)
 
             if self.current_graph_type == "bar":
-                bars = ax.bar(categories, times)
-                ax.set_title("Затраченное время (часы, последние 30 дней)")
+                bars = ax.bar(names, times)
+                ax.set_title("Затраченное время по задачам (часы)")
                 ax.set_ylabel("Часы")
-                ax.tick_params(axis='x', rotation=45)
+                plt.setp(ax.get_xticklabels(), rotation=45, ha="right")
 
                 # Добавляем подписи значений
                 for bar in bars:
@@ -647,8 +662,8 @@ class TimeTracker:
                             f'{height:.1f}',
                             ha='center', va='bottom')
             else:
-                ax.pie(times, labels=categories, autopct='%1.1f%%', startangle=90)
-                ax.set_title("Распределение времени (%)")
+                ax.pie(times, labels=names, autopct='%1.1f%%')
+                ax.set_title("Распределение времени по задачам")
                 ax.axis('equal')  # Круглый пирог
 
             # Встраиваем график
@@ -659,8 +674,8 @@ class TimeTracker:
         except Exception as e:
             # Если ошибка или нет данных
             ttk.Label(self.graph_frame,
-                      text=f"Нет данных для отображения\n({str(e)})",
-                      justify=tk.CENTER).pack(expand=True)
+                      text="Добавьте задачи и начните работу,\nчтобы увидеть статистику",
+                      font=('Arial', 10), foreground='gray').pack(expand=True)
 
 
 if __name__ == "__main__":
