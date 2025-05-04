@@ -31,21 +31,21 @@ class TimeTracker:
         self.style.configure(".", relief="flat")
         self.style.map("TButton", relief=[('active', 'flat'), ('!active', 'flat')])
 
-        # Настройки для Notebook (вкладок)
-        self.style.configure("TNotebook", borderwidth=1)
-        self.style.configure("TNotebook.Tab",
-                             padding=[10, 5],
-                             background="#F0F0F0",
-                             foreground="black")
-        self.style.map("TNotebook.Tab",
-                       background=[("selected", "#FFFFFF")],
-                       foreground=[("selected", "black")])
-
-        # Настройки для кнопок
-        self.style.configure("Accent.TButton",
-                             font=('Arial', 9, 'bold'),
-                             padding=5,
-                             relief="flat")
+        try:
+            self.light_icon = tk.PhotoImage(file='light_icon.png')
+            self.dark_icon = tk.PhotoImage(file='dark_icon.png')
+        except:
+            # Fallback если файлы не найдены
+            self.light_icon = tk.PhotoImage(data="""
+                iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAA
+                AsTAAALEwEAmpwYAAAAB3RJTUUH4AkEEjIZWYQo3QAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aX
+                RoIEdJTVBkLmUHAAAAJklEQVQ4y2NgGAXDFmzatMmKAQ38v3///n8o+v/gwYP/Dx48+A9Vw4gGAAAZdA
+                l3Xq8H1QAAAABJRU5ErkJggg==""")
+            self.dark_icon = tk.PhotoImage(data="""
+                iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABmJLR0QA/wD/AP+gvaeTAAAACXBIWXMAA
+                AsTAAALEwEAmpwYAAAAB3RJTUUH4AkEEjMfQ1JQYQAAAB1pVFh0Q29tbWVudAAAAAAAQ3JlYXRlZCB3aX
+                RoIEdJTVBkLmUHAAAAJklEQVQ4y2NgGAXDFmzatMmKAQ38v3///n8o+v/gwYP/Dx48+A9Vw4gGAADQ0Q
+                l3Xq8H1QAAAABJRU5ErkJggg==""")
 
         # Остальная инициализация
         self.setup_db()
@@ -64,10 +64,7 @@ class TimeTracker:
         self.load_theme()
         self.paused_task_time = 0
         self.title_template = "{regress} | {name} | {time} | Всего: {total}"
-
-        # Курсор для лучшей видимости
-        self.root.option_add('*insertBackground', 'white')
-        matplotlib.rcParams['path.effects'] = [patheffects.withStroke(linewidth=0)]
+        self.tooltips = {}
 
     def setup_db(self):
         self.conn = sqlite3.connect('timetracker.db')
@@ -120,10 +117,13 @@ class TimeTracker:
         self.total_time_label.pack(side=tk.LEFT, padx=10)
 
         # Кнопка темы в верхней панели справа
-        self.theme_btn = ttk.Button(top_panel, text="🌙",
+        self.theme_btn = ttk.Button(top_panel,
+                                    image=self.dark_icon if self.dark_mode else self.light_icon,
                                     command=self.toggle_theme,
-                                    width=3)
+                                    width=25)  # Фиксированная ширина для квадратной кнопки
         self.theme_btn.pack(side=tk.RIGHT, padx=5)
+
+        self.create_tooltip(self.theme_btn, "Сменить тему (темная/светлая)")
 
         # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
@@ -802,7 +802,8 @@ class TimeTracker:
     def toggle_theme(self):
         """Переключение между светлой и темной темой"""
         self.dark_mode = not self.dark_mode
-        self.theme_btn.config(text="☀️" if self.dark_mode else "🌙")  # Обновляем иконку
+        # Обновляем иконку кнопки
+        self.theme_btn.config(image=self.dark_icon if self.dark_mode else self.light_icon)
         self.apply_theme()
         self.save_theme()
 
@@ -1044,11 +1045,20 @@ class TimeTracker:
         if selected:
             task_id = self.tasks_list.item(selected[0])['values'][0]
             self.c.execute("SELECT link FROM tasks WHERE id=?", (task_id,))
-            link = self.c.fetchone()[0]
-            self.root.clipboard_clear()
-            self.root.clipboard_append(link)
-            # Можно добавить уведомление
-            self.show_notification("Ссылка скопирована")
+            result = self.c.fetchone()
+            if result and result[0]:  # Проверяем что ссылка есть
+                self.root.clipboard_clear()
+                self.root.clipboard_append(result[0])
+                # Просто меняем заголовок окна на 2 секунды вместо уведомления
+                old_title = self.root.title()
+                self.root.title("Ссылка скопирована!")
+                self.root.after(2000, lambda: self.root.title(old_title))
+
+    def show_notification(self, message, duration=2000):
+        """Показывает временное уведомление в заголовке окна"""
+        old_title = self.root.title()
+        self.root.title(message)
+        self.root.after(duration, lambda: self.root.title(old_title))
 
     def resume_selected_task(self):
         """Продолжает выбранную задачу из контекстного меню"""
@@ -1076,6 +1086,25 @@ class TimeTracker:
         selected = self.tasks_list.selection()
         if selected:
             self.delete_task()
+
+    def create_tooltip(self, widget, text):
+
+        def enter(event):
+            self.tooltips[widget] = tk.Toplevel(widget)
+            tip = self.tooltips[widget]
+            tip.wm_overrideredirect(True)
+            tip.wm_geometry(f"+{event.x_root + 15}+{event.y_root + 10}")
+            label = tk.Label(tip, text=text, background="#ffffe0",
+                             relief="solid", borderwidth=1, padx=4, pady=2)
+            label.pack()
+
+        def leave(event):
+            if widget in self.tooltips:
+                self.tooltips[widget].destroy()
+                del self.tooltips[widget]
+
+        widget.bind("<Enter>", enter)
+        widget.bind("<Leave>", leave)
 
 if __name__ == "__main__":
     root = tk.Tk()
