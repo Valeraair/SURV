@@ -1,3 +1,4 @@
+import threading
 import matplotlib
 matplotlib.use('TkAgg')  # Важно добавить перед другими импортами matplotlib
 import matplotlib.pyplot as plt
@@ -13,7 +14,6 @@ import openpyxl
 import pystray
 from PIL import Image
 import sys
-
 
 class TimeTracker:
     def __init__(self, root):
@@ -146,13 +146,15 @@ class TimeTracker:
             entry.config(foreground='grey')
 
     def setup_tray(self):
-        # Настройка иконки в системном трее
-        image = Image.new('RGB', (64, 64), 'black')
-        menu = pystray.Menu(
+        """Настройка иконки в системном трее"""
+        # Создаем изображение для иконки
+        image = Image.new('RGB', (16, 16), 'black')
+        self.tray_menu = pystray.Menu(
             pystray.MenuItem('Открыть', self.restore_window),
             pystray.MenuItem('Выход', self.exit_app)
         )
-        self.tray_icon = pystray.Icon("time_tracker", image, "Time Tracker", menu)
+        self.tray_icon = None
+        self.tray_thread = None
 
     def add_task(self):
         # Проверка заполнения обязательных полей
@@ -439,16 +441,46 @@ class TimeTracker:
         self.update_tasks()
         self.update_total_time()
 
+    def run_tray_icon(self):
+        """Метод для запуска иконки в отдельном потоке"""
+        try:
+            self.tray_icon.run()
+        except Exception as e:
+            print(f"Ошибка в трее: {e}")
+        finally:
+            self.tray_running = False
+
     def hide_to_tray(self):
-        # Скрытие окна в трей ДОРАБОТАТЬ ФЛОУ ФОНОВОЙ РАБОТЫ
+        """Скрытие окна в трей"""
         self.root.withdraw()
 
-    def restore_window(self, icon=None, item=None):
-        # Восстановление окна из трея
-        self.root.deiconify()
+        # Если иконка уже существует, не создаем новую
+        if self.tray_icon is not None:
+            return
 
-    def exit_app(self):
-        """Вызывается при выходе из программы"""
+        # Создаем новую иконку
+        image = Image.new('RGB', (16, 16), 'black')
+        self.tray_icon = pystray.Icon("time_tracker", image, "Time Tracker", self.tray_menu)
+
+        # Запускаем в отдельном потоке
+        self.tray_thread = threading.Thread(target=self.tray_icon.run, daemon=True)
+        self.tray_thread.start()
+
+    def restore_window(self, icon=None, item=None):
+        """Восстановление окна из трея"""
+        if self.tray_icon is not None:
+            try:
+                self.tray_icon.stop()
+            except:
+                pass
+            self.tray_icon = None
+
+        self.root.deiconify()
+        self.root.after(100, self.root.lift)
+
+    def exit_app(self, icon=None, item=None):
+        """Завершение работы приложения"""
+        self.restore_window()  # Сначала восстанавливаем окно
         self.safe_exit()
 
     def update_task_time(self, task_id, seconds):
@@ -851,12 +883,13 @@ if __name__ == "__main__":
     app = TimeTracker(root)
 
     # Обработчик закрытия окна
-    root.protocol('WM_DELETE_WINDOW', lambda: (
-        app.hide_to_tray() if messagebox.askyesno(
-            "Подтверждение",
-            "Свернуть программу в трей?"
-        ) else app.safe_exit()
-    ))
+    def on_close():
+        if messagebox.askyesno("Подтверждение", "Свернуть программу в трей?"):
+            app.hide_to_tray()
+        else:
+            app.safe_exit()
+
+    root.protocol('WM_DELETE_WINDOW', on_close)
 
     try:
         root.mainloop()
