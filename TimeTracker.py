@@ -14,6 +14,7 @@ import openpyxl
 import pystray
 from PIL import Image
 import sys
+from matplotlib import patheffects
 
 class TimeTracker:
     def __init__(self, root):
@@ -44,10 +45,22 @@ class TimeTracker:
         self.paused_task_time = 0
         self.title_template = "{regress} | {name} | {time} | Всего: {total}"
         self.setup_task_context_menu()
-        self.style.configure("TNotebook.Tab",
-                             padding=[10, 5],
-                             relief="flat",
-                             borderwidth=1)
+        self.style.configure("Custom.Treeview",
+                             rowheight=25,  # Высота строки
+                             borderwidth=0,  # Убираем границы
+                             relief='flat')  # Плоский стиль
+
+        if sys.platform == "win32":
+            self.style.layout("Custom.Treeview.Item", [
+                ('Treeitem.padding', {
+                    'sticky': 'nswe',
+                    'children': [
+                        ('Treeitem.indicator', {'side': 'left', 'sticky': ''}),
+                        ('Treeitem.image', {'side': 'left', 'sticky': ''}),
+                        ('Treeitem.text', {'side': 'left', 'sticky': ''})
+                    ]
+                })
+            ])
 
         # Стиль для неактивной вкладки (будет выглядеть как выделенная)
         self.style.map("TNotebook.Tab",
@@ -60,6 +73,20 @@ class TimeTracker:
         self.style.configure("Accent.TButton",
                              font=('Arial', 9, 'bold'),
                              padding=5)
+
+        self.root.option_add('*insertBackground', 'white')  # Курсор всегда белый для лучшей видимости
+        matplotlib.rcParams['path.effects'] = [patheffects.withStroke(linewidth=0)]
+
+        # Создаем кастомный стиль для Treeview с тонкими разделителями
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+        self.style.configure("Custom.Treeview",
+                             rowheight=25,  # Высота строки
+                             borderwidth=0,  # Убираем границы
+                             relief='flat')  # Плоский стиль
+
+        self.style.configure(".", relief="flat")
+        self.style.map("TButton", relief=[('active', 'flat'), ('!active', 'flat')])
 
     def setup_db(self):
         self.conn = sqlite3.connect('timetracker.db')
@@ -144,7 +171,8 @@ class TimeTracker:
         self.tasks_list = ttk.Treeview(main_frame,
                                        columns=('id', 'regress', 'name', 'status', 'time'),
                                        show='headings',
-                                       height=10)
+                                       height=12,
+                                       style="Custom.Treeview")  # Добавляем кастомный стиль
         self.tasks_list.heading('id', text='ID')
         self.tasks_list.heading('regress', text='Регресс')
         self.tasks_list.heading('name', text='Название')
@@ -170,19 +198,29 @@ class TimeTracker:
 
     def add_placeholder(self, entry, text):
         entry.insert(0, text)
-        entry.config(foreground='grey')
+        if self.dark_mode:
+            entry.config(foreground='#7A7A7A', background='#252525')  # Серый текст на темном фоне
+        else:
+            entry.config(foreground='grey', background='white')
+
         entry.bind('<FocusIn>', lambda e: self.on_entry_focus_in(entry, text))
         entry.bind('<FocusOut>', lambda e: self.on_entry_focus_out(entry, text))
 
     def on_entry_focus_in(self, entry, placeholder):
         if entry.get() == placeholder:
             entry.delete(0, tk.END)
-            entry.config(foreground='black')
+            if self.dark_mode:
+                entry.config(foreground='#FFFFFF', background='#252525')  # Белый текст в темной теме
+            else:
+                entry.config(foreground='black', background='white')
 
     def on_entry_focus_out(self, entry, placeholder):
         if entry.get() == '':
             entry.insert(0, placeholder)
-            entry.config(foreground='grey')
+            if self.dark_mode:
+                entry.config(foreground='#7A7A7A', background='#252525')
+            else:
+                entry.config(foreground='grey', background='white')
 
     def setup_tray(self):
         """Инициализация иконки трея (без запуска)"""
@@ -811,8 +849,15 @@ class TimeTracker:
         """Обновление темы графиков"""
         if self.dark_mode:
             plt.style.use('dark_background')
+            # Дополнительные настройки для темной темы
+            matplotlib.rcParams['axes.facecolor'] = '#252525'
+            matplotlib.rcParams['figure.facecolor'] = '#1E1E1E'
+            matplotlib.rcParams['grid.color'] = '#3A3A3A'
         else:
             plt.style.use('default')
+            # Сброс к стандартным настройкам
+            matplotlib.rcParams.update(matplotlib.rcParamsDefault)
+
         self.update_graph()
 
     def safe_exit(self):
@@ -842,82 +887,90 @@ class TimeTracker:
             # Темная тема
             bg_color = "#1E1E1E"
             fg_color = "#E0E0E0"
-            button_bg = "#333333"
-            button_hover = "#4A4A4A"  # Более мягкий цвет при наведении
-            active_bg = "#2D5D7B"  # Менее контрастный активный цвет
             entry_bg = "#252525"
-            border_color = "#2D2D2D"
-            separator_color = "#333333"
-            tab_bg_inactive = "#333333"
+            entry_fg = "#FFFFFF"
+            button_bg = "#333333"
+            button_fg = "#E0E0E0"
+            list_bg = "#252525"
+            list_fg = "#FFFFFF"
+            list_alt_bg = "#2D2D2D"
+            frame_bg = "#252525"
+            label_fg = "#E0E0E0"
+            separator_color = "#3A3A3A"  # Новый цвет для разделителей
         else:
-            # Светлая тема (оставляем как было)
+            # Светлая тема
             bg_color = "#F5F5F5"
             fg_color = "#000000"
-            button_bg = "#E0E0E0"
-            button_hover = "#D0D0D0"
-            active_bg = "#0078D7"
             entry_bg = "#FFFFFF"
-            border_color = "#CCCCCC"
-            separator_color = "#E0E0E0"
-            tab_bg_inactive = "#F0F0F0"
+            entry_fg = "#000000"
+            button_bg = "#E0E0E0"
+            button_fg = "#000000"
+            list_bg = "#FFFFFF"
+            list_fg = "#000000"
+            list_alt_bg = "#F0F0F0"
+            frame_bg = "#FFFFFF"
+            label_fg = "#000000"
+            separator_color = "#D0D0D0"  # Новый цвет для разделителей
 
         style = ttk.Style()
         style.theme_use('clam')
 
-        # Общие настройки
-        style.configure('.',
+        # Настройка основных стилей
+        style.configure(".",
                         background=bg_color,
                         foreground=fg_color,
-                        bordercolor=border_color,
-                        darkcolor=border_color,
-                        lightcolor=border_color)
+                        fieldbackground=entry_bg,
+                        insertcolor=fg_color)  # Цвет курсора
 
-        # Настройка кнопок
+        style.configure("TFrame", background=frame_bg)
+        style.configure("TLabel", background=frame_bg, foreground=label_fg)
         style.configure("TButton",
                         background=button_bg,
-                        foreground=fg_color,
-                        bordercolor=border_color)
-        style.map("TButton",
-                  background=[('active', button_hover),
-                              ('!active', button_bg)],
-                  foreground=[('active', fg_color),
-                              ('!active', fg_color)],
-                  relief=[('pressed', 'sunken'),
-                          ('!pressed', 'raised')])
-
-        # Настройка Treeview (список задач)
+                        foreground=button_fg,
+                        bordercolor=bg_color)
+        style.configure("TEntry",
+                        fieldbackground=entry_bg,
+                        foreground=entry_fg,
+                        insertcolor=fg_color)
+        style.configure("TNotebook", background=bg_color)
+        style.configure("TNotebook.Tab",
+                        background=button_bg,
+                        foreground=button_fg)
         style.configure("Treeview",
-                        background=entry_bg,
-                        foreground=fg_color,
-                        fieldbackground=entry_bg)
-        style.map("Treeview",
-                  background=[('selected', active_bg)],
-                  foreground=[('selected', fg_color)])
+                        background=list_bg,
+                        foreground=list_fg,
+                        fieldbackground=list_bg)
 
-        # Настройка заголовков Treeview
+        # Новые настройки для разделителей и строк
+        style.configure("Treeview.Separator",
+                        background=separator_color)
         style.configure("Treeview.Heading",
                         background=button_bg,
-                        foreground=fg_color,
-                        relief="raised")
-        style.map("Treeview.Heading",
-                  background=[('active', button_hover)],
-                  relief=[('pressed', 'sunken'),
-                          ('!pressed', 'raised')])
+                        foreground=button_fg)
 
-        # Настройка вкладок
-        style.configure("TNotebook.Tab",
-                        background=tab_bg_inactive,
-                        foreground=fg_color,
-                        padding=[10, 5],
-                        relief="flat")
-        style.map("TNotebook.Tab",
-                  background=[("selected", bg_color),
-                              ("!selected", tab_bg_inactive)],
-                  relief=[("selected", "flat"),
-                          ("!selected", "raised")])
+        style.map("Treeview",
+                  background=[('selected', '#0078D7')],
+                  foreground=[('selected', 'white')])
 
-        # Применяем к корневому окну
+        # Применяем цвета ко всем виджетам
         self.root.config(bg=bg_color)
+
+        # Обновляем список задач
+        self.tasks_list.tag_configure('oddrow', background=list_bg)
+        self.tasks_list.tag_configure('evenrow', background=list_alt_bg)
+
+        # Устанавливаем толщину разделителей (для Windows может потребоваться дополнительная настройка)
+        self.tasks_list.config(style="Custom.Treeview")  # Применяем кастомный стиль
+
+        # Обновляем все фреймы
+        for widget in self.root.winfo_children():
+            if isinstance(widget, (ttk.Frame, ttk.LabelFrame)):
+                widget.configure(style="TFrame")
+                for child in widget.winfo_children():
+                    if isinstance(child, ttk.Label):
+                        child.configure(style="TLabel")
+
+        # Обновляем график
         self.update_graph_theme()
 
     def save_theme(self):
@@ -973,11 +1026,10 @@ class TimeTracker:
         """Создаёт контекстное меню для задач"""
         self.task_context_menu = tk.Menu(self.root, tearoff=0)
 
-        # Цвета для темной темы
         if self.dark_mode:
             menu_bg = "#2D2D2D"
             menu_fg = "#E0E0E0"
-            active_bg = "#2D5D7B"  # Мягкий синий вместо контрастного
+            active_bg = "#2D5D7B"
             active_fg = "#FFFFFF"
         else:
             menu_bg = "#F5F5F5"
