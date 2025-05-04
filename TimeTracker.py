@@ -43,6 +43,7 @@ class TimeTracker:
         self.update_tasks()
         self.update_total_time()
         self.load_theme()  # Загружаем сохраненную тему
+        self.paused_task_time = 0
 
     def setup_db(self):
         # Инициализация БД
@@ -321,30 +322,20 @@ class TimeTracker:
             elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
             current_total = self.total_time + elapsed
 
-            # Обновляем заголовок окна
-            try:
-                task_name = self.get_task_name(self.running_task['id'])
-                self.root.title(
-                    self.title_template.format(
-                        task=task_name[:20],
-                        time=self.format_time(elapsed),
-                        total=self.format_time(current_total)
-                    )
-                )
-            except Exception as e:
-                print(f"Ошибка обновления заголовка: {e}")
+            # Обновляем заголовок
+            self.update_title()
 
             # Обновляем задачу в списке
             for item in self.tasks_list.get_children():
                 values = self.tasks_list.item(item)['values']
                 if values[0] == self.running_task['id']:
-                    total_time = self.get_task_time(self.running_task['id']) + elapsed
+                    total_task_time = self.get_task_time(self.running_task['id']) + elapsed
                     self.tasks_list.item(item, values=(
                         values[0],
                         values[1],
                         values[2],
                         '▶ Активна',
-                        self.format_time(total_time)
+                        self.format_time(total_task_time)  # Общее время задачи
                     ))
                     break
 
@@ -359,11 +350,12 @@ class TimeTracker:
     def pause_all(self):
         """Остановка всех таймеров по кнопке"""
         if self.running_task:
-            elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
-            self.update_task_time(self.running_task['id'], int(elapsed))
-            self.total_time += int(elapsed)
-            # Сохраняем текущую задачу как выбранную для продолжения
+            elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
+            self.update_task_time(self.running_task['id'], elapsed)
+            self.total_time += elapsed
+            # Сохраняем текущую задачу и накопленное время
             self.paused_task_id = self.running_task['id']
+            self.paused_task_time = self.get_task_time(self.running_task['id'])  # Новое поле
             self.running_task = None
 
         self.paused = True
@@ -375,7 +367,6 @@ class TimeTracker:
 
     def resume_all(self):
         """Возобновление работы с выбранной задачей"""
-        # Проверяем, есть ли выбранная задача в списке
         selected = self.tasks_list.selection()
         task_id = None
 
@@ -389,20 +380,24 @@ class TimeTracker:
             return
 
         # Проверяем существование задачи
-        self.c.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,))
-        if not self.c.fetchone():
+        if not self.task_exists(task_id):
             messagebox.showwarning("Ошибка", "Выбранная задача больше не существует")
             self.paused_task_id = None
             self.resume_btn.config(state=tk.DISABLED)
             return
 
-        # Запускаем задачу
-        self.start_task_timer(task_id)
+        # Запускаем задачу с сохранённым временем
+        self.running_task = {
+            'id': task_id,
+            'start_time': datetime.now() - timedelta(
+                seconds=self.paused_task_time if task_id == getattr(self, 'paused_task_id', None) else 0
+            )
+        }
+
         self.paused = False
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
-
-        # Обновляем заголовок
+        self.update_tasks()
         self.update_title()
 
     def update_total_time(self):
@@ -901,14 +896,16 @@ class TimeTracker:
             self.dark_mode = False
 
     def update_title(self):
-        """Обновляет заголовок окна"""
+        """Обновляет заголовок окна с учётом накопленного времени"""
         if self.running_task and not self.paused:
             elapsed = int((datetime.now() - self.running_task['start_time']).total_seconds())
             task_name = self.get_task_name(self.running_task['id'])
+            total_task_time = self.get_task_time(self.running_task['id']) + elapsed
+
             self.root.title(
                 self.title_template.format(
                     task=task_name[:20],
-                    time=self.format_time(elapsed),
+                    time=self.format_time(total_task_time),  # Показываем общее время задачи
                     total=self.format_time(self.total_time + elapsed)
                 )
             )
