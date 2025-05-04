@@ -117,17 +117,16 @@ class TimeTracker:
                                           font=('Arial', 10, 'bold'))
         self.total_time_label.pack(side=tk.LEFT, padx=10)
 
-        # Получаем текущие цвета
+        # Замените создание кнопки темы на:
         colors = self.get_current_colors()
-
-        # Кнопка темы в верхней панели справа
         self.theme_btn = tk.Button(top_panel,
                                    image=self.dark_icon if self.dark_mode else self.light_icon,
                                    command=self.toggle_theme,
                                    bd=0,
                                    highlightthickness=0,
                                    activebackground=colors['active_bg'],
-                                   background=colors['bg'])
+                                   background=colors['theme_btn_bg'],  # Используем специальный цвет
+                                   relief="flat")
         self.theme_btn.pack(side=tk.RIGHT, padx=5)
 
         # обновление фона панели
@@ -810,9 +809,8 @@ class TimeTracker:
     def toggle_theme(self):
         """Переключение между светлой и темной темой"""
         self.dark_mode = not self.dark_mode
-        # Обновляем иконку кнопки
-        self.theme_btn.config(image=self.dark_icon if self.dark_mode else self.light_icon)
         self.apply_theme()
+        self.update_theme_button()  # Добавьте эту строку
         self.save_theme()
 
     def apply_theme(self):
@@ -980,6 +978,9 @@ class TimeTracker:
         style.map("Treeview.Heading",
                   background=[('active', button_bg)],
                   relief=[('pressed', 'sunken'), ('!pressed', 'solid')])
+
+        if hasattr(self, 'theme_btn'):
+            self.update_theme_button()
 
     def save_theme(self):
         """Сохранение темы в файл"""
@@ -1199,7 +1200,8 @@ class TimeTracker:
                 'fg': "#E0E0E0",
                 'active_bg': "#2D2D2D",
                 'button_bg': "#333333",
-                'border': "#3A3A3A"
+                'border': "#3A3A3A",
+                'theme_btn_bg': "#1E1E1E"  # Новый цвет для кнопки темы
             }
         else:
             return {
@@ -1207,8 +1209,20 @@ class TimeTracker:
                 'fg': "#000000",
                 'active_bg': "#E0E0E0",
                 'button_bg': "#F0F0F0",
-                'border': "#D0D0D0"
+                'border': "#D0D0D0",
+                'theme_btn_bg': "#F5F5F5"  # Новый цвет для кнопки темы
             }
+
+    def update_theme_button(self):
+        """Обновляет вид кнопки темы при смене темы"""
+        colors = self.get_current_colors()
+        self.theme_btn.config(
+            image=self.dark_icon if self.dark_mode else self.light_icon,
+            activebackground=colors['active_bg'],
+            background=colors['theme_btn_bg']
+        )
+        # Обновляем фон верхней панели
+        self.theme_btn.master.configure(style='TFrame')
 
 if __name__ == "__main__":
     root = tk.Tk()
