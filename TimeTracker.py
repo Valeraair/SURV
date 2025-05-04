@@ -1,3 +1,7 @@
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+import matplotlib.dates as mdates
 from datetime import timedelta
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -14,15 +18,85 @@ class TimeTracker:
         self.root = root
         self.root.title("Work Time Tracker")
         self.setup_db()
-        self.setup_ui()
+        self.setup_ui()  # Должно быть перед update_tasks()
         self.setup_tray()
         self.running_task = None
         self.paused = False
-        self.paused_task_id = None  # Новое: для хранения ID задачи на паузе
+        self.paused_task_id = None
         self.total_time = 0
+        self.current_graph_type = "bar"
         self.root.after(1000, self.update_time)
-        self.update_tasks()
+        self.update_tasks()  # Теперь tasks_list будет создан
         self.update_total_time()
+
+    def setup_db(self):
+        # Инициализация БД
+        self.conn = sqlite3.connect('timetracker.db')
+        self.c = self.conn.cursor()
+        self.c.execute('''CREATE TABLE IF NOT EXISTS tasks
+                         (id INTEGER PRIMARY KEY,
+                          date TEXT,
+                          login TEXT,
+                          regress TEXT,
+                          name TEXT,
+                          link TEXT,
+                          time INTEGER)''')
+        self.conn.commit()
+
+    def setup_stats_tab(self):
+        """Настраивает вкладку статистики"""
+        self.stats_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.stats_frame, text="Статистика")
+
+        # Панель управления
+        control_frame = ttk.Frame(self.stats_frame)
+        control_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        ttk.Button(control_frame, text="Столбчатая",
+                  command=lambda: self.switch_graph("bar")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Круговая",
+                  command=lambda: self.switch_graph("pie")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(control_frame, text="Обновить",
+                  command=self.update_graph).pack(side=tk.RIGHT, padx=5)
+
+        # Область для графика
+        self.graph_frame = ttk.Frame(self.stats_frame)
+        self.graph_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        # Инициализация
+        self.current_graph_type = "bar"
+        self.update_graph()
+
+    def setup_tracking_tab(self):
+        """Настраивает вкладку трекинга задач"""
+        tracking_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tracking_frame, text="Трекинг")
+
+        # Переносим весь основной UI сюда
+        main_frame = ttk.Frame(tracking_frame, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_columnconfigure(1, weight=1)
+
+        # Сюда вставляем ВЕСЬ предыдущий UI код из старого setup_ui()
+        # (от "Поле логина" до "Настройка расширения")
+        # Только меняем root на tracking_frame/main_frame где нужно
+
+        # Пример (вам нужно перенести ВЕСЬ разметку):
+        ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.login_entry = ttk.Entry(main_frame)
+        self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.login_entry, "Введите ваш логин")
+
+    def setup_ui(self):
+        # Создаем панель вкладок
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True)
+
+        # Вкладка трекинга (только задачи)
+        self.setup_tracking_tab()
+
+        # Вкладка статистики (только графики)
+        self.setup_stats_tab()
 
     def add_placeholder(self, entry, text):
         entry.insert(0, text)
@@ -39,102 +113,6 @@ class TimeTracker:
         if entry.get() == '':
             entry.insert(0, placeholder)
             entry.config(foreground='grey')
-
-    def setup_db(self):
-        # Инициализация БД
-        self.conn = sqlite3.connect('timetracker.db')
-        self.c = self.conn.cursor()
-        self.c.execute('''CREATE TABLE IF NOT EXISTS tasks
-                         (id INTEGER PRIMARY KEY,
-                          date TEXT,
-                          login TEXT,
-                          regress TEXT,
-                          name TEXT,
-                          link TEXT,
-                          time INTEGER)''')
-        self.conn.commit()
-
-    def setup_ui(self):
-        # Инициализация UI
-        main_frame = ttk.Frame(self.root, padding=10)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        main_frame.grid_columnconfigure(1, weight=1)
-
-        # Стиль для элементов
-        style = ttk.Style()
-        style.configure('TEntry', padding=5, font=('Arial', 10))
-        style.configure('TButton', padding=5, font=('Arial', 10))
-        style.configure('TLabel', font=('Arial', 10))
-
-        # Поле логина
-        ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.login_entry = ttk.Entry(main_frame)
-        self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Введите ваш логин")
-
-        # Форма задачи
-        task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
-        task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
-        task_frame.grid_columnconfigure(1, weight=1)
-
-        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W)
-        self.regress_entry = ttk.Entry(task_frame)
-        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.regress_entry, "Название поверхности")
-
-        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W)
-        self.name_entry = ttk.Entry(task_frame)
-        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.name_entry, "Название тест-рана")
-
-        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W)
-        self.link_entry = ttk.Entry(task_frame)
-        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW)
-        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
-
-        self.extra_time = tk.BooleanVar()
-        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
-
-        add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
-        add_btn.grid(row=4, columnspan=2, pady=5)
-
-        # Список задач
-        self.tasks_list = ttk.Treeview(main_frame, columns=('id', 'regress', 'name', 'status', 'time'), show='headings')
-        self.tasks_list.heading('id', text='ID')
-        self.tasks_list.heading('regress', text='Регресс')
-        self.tasks_list.heading('name', text='Название')
-        self.tasks_list.heading('status', text='Статус')
-        self.tasks_list.heading('time', text='Время')
-        self.tasks_list.column('status', width=100, anchor=tk.CENTER)
-        self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
-
-        # Панель управления
-        control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=3, columnspan=2, pady=5)
-
-        delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
-        delete_btn.pack(side=tk.LEFT, padx=10)
-
-        self.total_time_label = ttk.Label(control_frame, text="Общее время: 00:00:00")
-        self.total_time_label.pack(side=tk.LEFT, padx=10)
-
-        self.pause_btn = ttk.Button(control_frame, text="Пауза", command=self.pause_all)
-        self.pause_btn.pack(side=tk.LEFT, padx=10)
-
-        self.resume_btn = ttk.Button(control_frame, text="Продолжить", command=self.resume_all, state=tk.DISABLED)
-        self.resume_btn.pack(side=tk.LEFT, padx=10)
-
-        finish_btn = ttk.Button(control_frame, text="Завершить день", command=self.finish_day)
-        finish_btn.pack(side=tk.LEFT, padx=10)
-
-        # Настройка расширения
-        main_frame.grid_rowconfigure(2, weight=1)
-
-        #Кнопка ИЗМЕНИТЬ
-        self.edit_btn = ttk.Button(control_frame, text="Изменить", command=self.edit_task, state=tk.DISABLED)
-        self.edit_btn.pack(side=tk.LEFT, padx=10)
-
-        self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
 
     def setup_tray(self):
         # Настройка иконки в системном трее
@@ -193,6 +171,7 @@ class TimeTracker:
             self.update_tasks()
             self.clear_task_fields()
             self.start_task_timer(new_id)
+            self.update_graph()
 
         except Exception as e:
             messagebox.showerror("Ошибка БД", f"Не удалось добавить задачу: {str(e)}")
@@ -389,12 +368,11 @@ class TimeTracker:
         self.total_time_label.config(text=f"Общее время: {self.format_time(total)}")
 
     def finish_day(self):
-        # Завершение рабочего дня
         if messagebox.askokcancel("Завершение дня", "Экспортировать данные и завершить работу?"):
             self.export_to_xlsx()
             self.clear_day_data()
+            self.update_graph()  # Обновляем график после очистки данных
             messagebox.showinfo("Успех", "Данные экспортированы и очищены")
-            self.exit_app()
 
     def export_to_xlsx(self):
         # Экспорт в Excel
@@ -539,6 +517,150 @@ class TimeTracker:
 
         ttk.Button(buttons_frame, text="Сохранить", command=save_changes).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Отмена", command=edit_win.destroy).pack(side=tk.LEFT, padx=5)
+
+    def setup_tracking_tab(self):
+        """Настраивает вкладку трекинга задач"""
+        tracking_frame = ttk.Frame(self.notebook)
+        self.notebook.add(tracking_frame, text="Трекинг")
+
+        # Переносим весь основной UI сюда
+        main_frame = ttk.Frame(tracking_frame, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        main_frame.grid_columnconfigure(1, weight=1)
+
+        # Поле логина
+        ttk.Label(main_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.login_entry = ttk.Entry(main_frame)
+        self.login_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.login_entry, "Введите ваш логин")
+
+        # Форма задачи
+        task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
+        task_frame.grid(row=1, column=0, columnspan=2, pady=5, sticky=tk.EW)
+        task_frame.grid_columnconfigure(1, weight=1)
+
+        ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W)
+        self.regress_entry = ttk.Entry(task_frame)
+        self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.regress_entry, "Название поверхности")
+
+        ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W)
+        self.name_entry = ttk.Entry(task_frame)
+        self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.name_entry, "Название тест-рана")
+
+        ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W)
+        self.link_entry = ttk.Entry(task_frame)
+        self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW)
+        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
+
+        self.extra_time = tk.BooleanVar()
+        ttk.Checkbutton(task_frame, text="Доп. время", variable=self.extra_time).grid(row=3, columnspan=2, pady=5)
+
+        add_btn = ttk.Button(task_frame, text="Добавить", command=self.add_task)
+        add_btn.grid(row=4, columnspan=2, pady=5)
+
+        # Список задач
+        self.tasks_list = ttk.Treeview(main_frame, columns=('id', 'regress', 'name', 'status', 'time'), show='headings')
+        self.tasks_list.heading('id', text='ID')
+        self.tasks_list.heading('regress', text='Регресс')
+        self.tasks_list.heading('name', text='Название')
+        self.tasks_list.heading('status', text='Статус')
+        self.tasks_list.heading('time', text='Время')
+        self.tasks_list.column('status', width=100, anchor=tk.CENTER)
+        self.tasks_list.grid(row=2, column=0, columnspan=2, pady=5, sticky=tk.NSEW)
+        self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
+
+        # Панель управления
+        control_frame = ttk.Frame(main_frame)
+        control_frame.grid(row=3, columnspan=2, pady=5)
+
+        delete_btn = ttk.Button(control_frame, text="Удалить", command=self.delete_task)
+        delete_btn.pack(side=tk.LEFT, padx=10)
+
+        self.total_time_label = ttk.Label(control_frame, text="Общее время: 00:00:00")
+        self.total_time_label.pack(side=tk.LEFT, padx=10)
+
+        self.pause_btn = ttk.Button(control_frame, text="Пауза", command=self.pause_all)
+        self.pause_btn.pack(side=tk.LEFT, padx=10)
+
+        self.resume_btn = ttk.Button(control_frame, text="Продолжить", command=self.resume_all, state=tk.DISABLED)
+        self.resume_btn.pack(side=tk.LEFT, padx=10)
+
+        finish_btn = ttk.Button(control_frame, text="Завершить день", command=self.finish_day)
+        finish_btn.pack(side=tk.LEFT, padx=10)
+
+        self.edit_btn = ttk.Button(control_frame, text="Изменить", command=self.edit_task, state=tk.DISABLED)
+        self.edit_btn.pack(side=tk.LEFT, padx=10)
+
+        # Настройка расширения
+        main_frame.grid_rowconfigure(2, weight=1)
+
+    def switch_graph(self, graph_type):
+        """Переключает тип графика"""
+        self.current_graph_type = graph_type
+        self.update_graph()
+
+    def update_graph(self):
+        """Обновляет график на основе текущих данных"""
+        # Очищаем предыдущий график
+        for widget in self.graph_frame.winfo_children():
+            widget.destroy()
+
+        # Получаем данные из БД (более надежный запрос)
+        try:
+            self.c.execute("""
+                           SELECT CASE
+                                      WHEN name LIKE '%[ДОП]%' THEN 'Доп. задачи'
+                                      WHEN name LIKE '%тест%' THEN 'Тестирование'
+                                      ELSE 'Прочее'
+                                      END   as category,
+                                  SUM(time) as total_time
+                           FROM tasks
+                           WHERE date >= date ('now', '-30 days')
+                           GROUP BY category
+                           HAVING total_time > 0
+                           ORDER BY total_time DESC
+                           """)
+            data = self.c.fetchall()
+
+            if not data:
+                raise ValueError("Нет данных")
+
+            categories = [item[0] for item in data]
+            times = [item[1] / 3600 for item in data]  # Переводим секунды в часы
+
+            # Создаем фигуру matplotlib
+            fig = Figure(figsize=(6, 4), dpi=100)
+            ax = fig.add_subplot(111)
+
+            if self.current_graph_type == "bar":
+                bars = ax.bar(categories, times)
+                ax.set_title("Затраченное время (часы, последние 30 дней)")
+                ax.set_ylabel("Часы")
+                ax.tick_params(axis='x', rotation=45)
+
+                # Добавляем подписи значений
+                for bar in bars:
+                    height = bar.get_height()
+                    ax.text(bar.get_x() + bar.get_width() / 2., height,
+                            f'{height:.1f}',
+                            ha='center', va='bottom')
+            else:
+                ax.pie(times, labels=categories, autopct='%1.1f%%', startangle=90)
+                ax.set_title("Распределение времени (%)")
+                ax.axis('equal')  # Круглый пирог
+
+            # Встраиваем график
+            canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+        except Exception as e:
+            # Если ошибка или нет данных
+            ttk.Label(self.graph_frame,
+                      text=f"Нет данных для отображения\n({str(e)})",
+                      justify=tk.CENTER).pack(expand=True)
 
 
 if __name__ == "__main__":
