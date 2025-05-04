@@ -129,6 +129,12 @@ class TimeTracker:
         # Настройка расширения
         main_frame.grid_rowconfigure(2, weight=1)
 
+        #Кнопка ИЗМЕНИТЬ
+        self.edit_btn = ttk.Button(control_frame, text="Изменить", command=self.edit_task, state=tk.DISABLED)
+        self.edit_btn.pack(side=tk.LEFT, padx=10)
+
+        self.tasks_list.bind('<<TreeviewSelect>>', self.on_task_select)
+
     def setup_tray(self):
         # Настройка иконки в системном трее
         image = Image.new('RGB', (64, 64), 'black')
@@ -193,7 +199,6 @@ class TimeTracker:
     def start_task_timer(self, task_id):
         """Явный запуск таймера для задачи"""
         if self.running_task:
-            # Останавливаем текущую задачу
             elapsed = (datetime.now() - self.running_task['start_time']).total_seconds()
             self.update_task_time(self.running_task['id'], int(elapsed))
             self.total_time += int(elapsed)
@@ -203,7 +208,7 @@ class TimeTracker:
         self.paused = False
         self.pause_btn.config(state=tk.NORMAL)
         self.resume_btn.config(state=tk.DISABLED)
-        self.paused_task_id = None  # Сбрасываем задачу на паузе
+        self.edit_btn.config(state=tk.DISABLED)  # Блокируем кнопку при запуске
         self.update_tasks()
         self.update_total_time()
 
@@ -265,10 +270,12 @@ class TimeTracker:
                 task_id, regress, name, time = row
                 if self.running_task and self.running_task['id'] == task_id:
                     status = '▶ Активна'
-                elif self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
-                    status = '⏸ Выбрана'
+                    self.edit_btn['state'] = tk.DISABLED  # Блокируем кнопку для активной задачи
                 else:
-                    status = '⏸ Ожидание'
+                    if self.paused and hasattr(self, 'paused_task_id') and self.paused_task_id == task_id:
+                        status = '⏸ Выбрана'
+                    else:
+                        status = '⏸ Ожидание'
 
                 self.tasks_list.insert('', tk.END, values=(
                     task_id,
@@ -278,10 +285,11 @@ class TimeTracker:
                     self.format_time(time)
                 ))
 
-            # Обновляем состояние кнопки "Продолжить"
+            # Обновляем состояние кнопок
             if not tasks:
                 self.paused_task_id = None
                 self.resume_btn.config(state=tk.DISABLED)
+                self.edit_btn.config(state=tk.DISABLED)
             elif self.paused:
                 self.resume_btn.config(state=tk.NORMAL)
 
@@ -292,17 +300,14 @@ class TimeTracker:
         """Обработчик выбора задачи в списке"""
         selected = self.tasks_list.selection()
         if not selected:
+            self.edit_btn['state'] = tk.DISABLED
             return
 
         task_id = self.tasks_list.item(selected[0])['values'][0]
 
-        if self.paused:
-            # Во время паузы просто запоминаем выбранную задачу
-            self.paused_task_id = task_id
-            self.update_tasks()
-        else:
-            # Если не на паузе - сразу запускаем задачу
-            self.start_task_timer(task_id)
+        # Разрешаем редактирование только для неактивных задач
+        is_active = self.running_task and self.running_task['id'] == task_id
+        self.edit_btn['state'] = tk.DISABLED if is_active else tk.NORMAL
 
     def format_time(self, seconds):
         # Форматирование времени
@@ -455,6 +460,75 @@ class TimeTracker:
         """Проверяет, существует ли задача с указанным ID"""
         self.c.execute("SELECT 1 FROM tasks WHERE id=?", (task_id,))
         return bool(self.c.fetchone())
+
+    def edit_task(self):
+        selected = self.tasks_list.selection()
+        if not selected:
+            return
+
+        task_id = self.tasks_list.item(selected[0])['values'][0]
+
+        # Получаем текущие данные задачи (кроме времени)
+        self.c.execute("SELECT regress, name, link FROM tasks WHERE id=?", (task_id,))
+        regress, name, link = self.c.fetchone()
+
+        # Создаем окно редактирования
+        edit_win = tk.Toplevel(self.root)
+        edit_win.title("Редактирование задачи")
+        edit_win.resizable(False, False)
+
+        # Фрейм для полей ввода
+        fields_frame = ttk.Frame(edit_win, padding=10)
+        fields_frame.pack()
+
+        # Поля формы
+        ttk.Label(fields_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        regress_entry = ttk.Entry(fields_frame, width=40)
+        regress_entry.grid(row=0, column=1, padx=5, pady=5)
+        regress_entry.insert(0, regress)
+
+        ttk.Label(fields_frame, text="Название:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        name_entry = ttk.Entry(fields_frame, width=40)
+        name_entry.grid(row=1, column=1, padx=5, pady=5)
+        name_entry.insert(0, name)
+
+        ttk.Label(fields_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        link_entry = ttk.Entry(fields_frame, width=40)
+        link_entry.grid(row=2, column=1, padx=5, pady=5)
+        link_entry.insert(0, link)
+
+        # Фрейм для кнопок
+        buttons_frame = ttk.Frame(edit_win, padding=10)
+        buttons_frame.pack()
+
+        def save_changes():
+            new_regress = regress_entry.get().strip()
+            new_name = name_entry.get().strip()
+            new_link = link_entry.get().strip()
+
+            if not all([new_regress, new_name, new_link]):
+                messagebox.showerror("Ошибка", "Все поля должны быть заполнены")
+                return
+
+            try:
+                # Обновляем только текст задачи, время остается прежним
+                self.c.execute("""
+                               UPDATE tasks
+                               SET regress = ?,
+                                   name    = ?,
+                                   link    = ?
+                               WHERE id = ?
+                               """, (new_regress, new_name, new_link, task_id))
+                self.conn.commit()
+
+                self.update_tasks()
+                edit_win.destroy()
+                messagebox.showinfo("Успех", "Задача успешно обновлена")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось обновить задачу: {str(e)}")
+
+        ttk.Button(buttons_frame, text="Сохранить", command=save_changes).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Отмена", command=edit_win.destroy).pack(side=tk.LEFT, padx=5)
 
 
 if __name__ == "__main__":
