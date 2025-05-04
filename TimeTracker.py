@@ -1,3 +1,4 @@
+from tkinter import Toplevel, Label
 import threading
 import matplotlib
 matplotlib.use('TkAgg')
@@ -116,14 +117,21 @@ class TimeTracker:
                                           font=('Arial', 10, 'bold'))
         self.total_time_label.pack(side=tk.LEFT, padx=10)
 
+        # Получаем текущие цвета
+        colors = self.get_current_colors()
+
         # Кнопка темы в верхней панели справа
-        self.theme_btn = ttk.Button(top_panel,
-                                    image=self.dark_icon if self.dark_mode else self.light_icon,
-                                    command=self.toggle_theme,
-                                    width=25)  # Фиксированная ширина для квадратной кнопки
+        self.theme_btn = tk.Button(top_panel,
+                                   image=self.dark_icon if self.dark_mode else self.light_icon,
+                                   command=self.toggle_theme,
+                                   bd=0,
+                                   highlightthickness=0,
+                                   activebackground=colors['active_bg'],
+                                   background=colors['bg'])
         self.theme_btn.pack(side=tk.RIGHT, padx=5)
 
-        self.create_tooltip(self.theme_btn, "Сменить тему (темная/светлая)")
+        # обновление фона панели
+        top_panel.configure(style='TFrame')  # Для ttk.Frame
 
         # Основной контент
         main_frame = ttk.Frame(tracking_frame, padding=10)
@@ -138,7 +146,7 @@ class TimeTracker:
         ttk.Label(login_frame, text="Логин:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
         self.login_entry = ttk.Entry(login_frame)
         self.login_entry.grid(row=0, column=1, sticky=tk.EW)
-        self.add_placeholder(self.login_entry, "Введите ваш логин")  # Подсказка для логина
+        self.add_placeholder(self.login_entry, "Введите ваш логин")
 
         # Форма задачи с увеличенными отступами
         task_frame = ttk.LabelFrame(main_frame, text="Новая задача", padding=10)
@@ -149,17 +157,17 @@ class TimeTracker:
         ttk.Label(task_frame, text="Регресс:").grid(row=0, column=0, sticky=tk.W, pady=(0, 7))
         self.regress_entry = ttk.Entry(task_frame)
         self.regress_entry.grid(row=0, column=1, padx=10, sticky=tk.EW, pady=(0, 7))
-        self.add_placeholder(self.regress_entry, "Название поверхности")  # Подсказка для регресса
+        self.add_placeholder(self.regress_entry, "Название поверхности")
 
         ttk.Label(task_frame, text="Название:").grid(row=1, column=0, sticky=tk.W, pady=7)
         self.name_entry = ttk.Entry(task_frame)
         self.name_entry.grid(row=1, column=1, padx=10, sticky=tk.EW, pady=7)
-        self.add_placeholder(self.name_entry, "Название тест-рана")  # Подсказка для названия
+        self.add_placeholder(self.name_entry, "Название тест-рана")
 
         ttk.Label(task_frame, text="Ссылка:").grid(row=2, column=0, sticky=tk.W, pady=(7, 0))
         self.link_entry = ttk.Entry(task_frame)
         self.link_entry.grid(row=2, column=1, padx=10, sticky=tk.EW, pady=(7, 0))
-        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")  # Подсказка для ссылки
+        self.add_placeholder(self.link_entry, "Ссылка на тест-ран")
 
         # Чекбокс и кнопки
         self.extra_time = tk.BooleanVar()
@@ -912,6 +920,67 @@ class TimeTracker:
         if hasattr(self, 'tasks_list'):
             self.tasks_list.config(style="Treeview")
 
+        # Настройки для всех кнопок
+        style.configure("TButton",
+                        padding=5,
+                        relief="flat",
+                        borderwidth=1)
+
+        style.map("TButton",
+                  background=[('active', button_bg)],
+                  relief=[('pressed', 'sunken'), ('!pressed', 'flat')])
+
+        # Стиль для заголовков столбцов
+        style.configure("Treeview.Heading",
+                        font=('Arial', 9, 'bold'),
+                        padding=(5, 3, 5, 3),
+                        relief="flat")
+
+        # Стиль для обычных кнопок
+        style.configure("Accent.TButton",
+                        font=('Arial', 9, 'bold'),
+                        padding=5,
+                        relief="flat")
+
+        # Границы для фреймов
+        style.configure("TLabelframe",
+                        borderwidth=1,
+                        relief="solid",
+                        padding=5)
+
+        style.configure("TLabelframe.Label",
+                        font=('Arial', 9, 'bold'))
+
+        style.configure("Treeview",
+                        borderwidth=1,
+                        relief="solid",
+                        rowheight=25)
+
+        style.configure("Treeview.Heading",
+                        borderwidth=1,
+                        relief="solid",
+                        padding=5)
+
+        style.configure("Treeview",
+                        background=list_bg,
+                        foreground=list_fg,
+                        fieldbackground=list_bg,
+                        borderwidth=1,
+                        relief="solid",
+                        rowheight=25)
+
+        style.configure("Treeview.Heading",
+                        background=button_bg,
+                        foreground=button_fg,
+                        borderwidth=1,
+                        relief="solid",
+                        padding=5,
+                        font=('Arial', 9, 'bold'))
+
+        style.map("Treeview.Heading",
+                  background=[('active', button_bg)],
+                  relief=[('pressed', 'sunken'), ('!pressed', 'solid')])
+
     def save_theme(self):
         """Сохранение темы в файл"""
         with open('theme.cfg', 'w') as f:
@@ -1046,19 +1115,35 @@ class TimeTracker:
             task_id = self.tasks_list.item(selected[0])['values'][0]
             self.c.execute("SELECT link FROM tasks WHERE id=?", (task_id,))
             result = self.c.fetchone()
-            if result and result[0]:  # Проверяем что ссылка есть
+            if result and result[0]:
                 self.root.clipboard_clear()
                 self.root.clipboard_append(result[0])
-                # Просто меняем заголовок окна на 2 секунды вместо уведомления
-                old_title = self.root.title()
-                self.root.title("Ссылка скопирована!")
-                self.root.after(2000, lambda: self.root.title(old_title))
+                self.show_notification("Ссылка скопирована в буфер")
 
     def show_notification(self, message, duration=2000):
-        """Показывает временное уведомление в заголовке окна"""
-        old_title = self.root.title()
-        self.root.title(message)
-        self.root.after(duration, lambda: self.root.title(old_title))
+        """Показывает красивое всплывающее уведомление рядом с курсором"""
+        colors = self.get_current_colors()
+
+        # Получаем позицию курсора
+        x = self.root.winfo_pointerx()
+        y = self.root.winfo_pointery()
+
+        notif = Toplevel(self.root)
+        notif.overrideredirect(True)
+        notif.geometry(f"+{x + 15}+{y + 15}")  # Смещаем немного от курсора
+        notif.configure(bg=colors['bg'])
+
+        Label(notif,
+              text=message,
+              bg=colors['bg'],
+              fg=colors['fg'],
+              padx=15,
+              pady=5,
+              font=('Arial', 9),
+              relief="solid",
+              borderwidth=1).pack()
+
+        notif.after(duration, notif.destroy)
 
     def resume_selected_task(self):
         """Продолжает выбранную задачу из контекстного меню"""
@@ -1105,6 +1190,25 @@ class TimeTracker:
 
         widget.bind("<Enter>", enter)
         widget.bind("<Leave>", leave)
+
+    def get_current_colors(self):
+        """Возвращает текущие цвета в зависимости от темы"""
+        if self.dark_mode:
+            return {
+                'bg': "#1E1E1E",
+                'fg': "#E0E0E0",
+                'active_bg': "#2D2D2D",
+                'button_bg': "#333333",
+                'border': "#3A3A3A"
+            }
+        else:
+            return {
+                'bg': "#F5F5F5",
+                'fg': "#000000",
+                'active_bg': "#E0E0E0",
+                'button_bg': "#F0F0F0",
+                'border': "#D0D0D0"
+            }
 
 if __name__ == "__main__":
     root = tk.Tk()
